@@ -231,6 +231,12 @@ int lorawan_join_network(enum lorawan_datarate datarate, enum lorawan_act_type m
 
 		LOG_INF("Network join request sent!");
 
+		while (1) {
+			//LOG_INF("LoRaMacProcess");
+			LoRaMacProcess();
+			k_sleep(1);
+		}
+
 		k_sem_take(&lorawan_config_sem, K_FOREVER);
 	}
 

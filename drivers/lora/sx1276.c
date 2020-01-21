@@ -29,10 +29,11 @@ LOG_MODULE_REGISTER(sx1276);
 #define BOARD_TCXO_WAKEUP_TIME	5
 
 /* TODO: Use RTC backup */
-static uint32_t backup_reg[2] = { 0 ,0 };
-static uint32_t saved_time;
+static volatile uint32_t backup_reg[2] = { 0 ,0 };
+static volatile uint32_t saved_time;
 
 extern DioIrqHandler *DioIrq[];
+struct counter_alarm_cfg alarm_cfg;
 
 int sx1276_dio_pins[SX1276_MAX_DIO] = {
 	DT_INST_0_SEMTECH_SX1276_DIO_GPIOS_PIN_0,
@@ -116,34 +117,37 @@ void BoardCriticalSectionEnd(uint32_t *mask)
 	irq_unlock(*mask);
 }
 
-static void counter_isr(struct device *counter_dev, u8_t chan_id,
+void counter_isr(struct device *counter_dev, u8_t chan_id,
 			u32_t ticks, void *user_data)
 {
+	printk("ISR\n");
 	TimerIrqHandler();
 }
 
 uint32_t RtcGetTimerValue(void)
 {
+	LOG_INF("timer value: %d\n", counter_read(dev_data.counter));
 	return counter_read(dev_data.counter);
 }
 
 uint32_t RtcGetTimerElapsedTime(void)
 {
+	LOG_INF("elapsed: %d\n", (uint32_t)(counter_read(dev_data.counter)));
 	return (uint32_t)(counter_read(dev_data.counter) - saved_time);
 }
 
 u32_t RtcGetMinimumTimeout(void)
 {
 	/* TODO: Get this value from counter driver */
-	return 3;
+	return 2;
 }
 
 void RtcSetAlarm(uint32_t timeout)
 {
-	struct counter_alarm_cfg alarm_cfg;
+	LOG_INF("timeout: %d\n", timeout);
 
 	alarm_cfg.flags = 0;
-	alarm_cfg.ticks = timeout;
+	alarm_cfg.ticks = 2;
 	alarm_cfg.callback = counter_isr;
 	alarm_cfg.user_data = NULL;
 
@@ -207,6 +211,7 @@ static void sx1276_irq_callback(struct device *dev,
 
 	pin = find_lsb_set(pins) - 1;
 
+    printk("%s: %d pin: %d\n", __func__, __LINE__, pin);
 	for (i = 0; i < SX1276_MAX_DIO; i++) {
 		if (pin == sx1276_dio_pins[i]) {
 			(*DioIrq[i])(NULL);
