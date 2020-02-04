@@ -57,6 +57,11 @@
 	};
 };
 
+&rtc {
+	status = "okay";
+	#lora-rtc-cells = <0>;
+};
+
 &spi1 {
 	status = "okay";
 	cs-gpios = <&gpiob 0 0>;
@@ -69,12 +74,11 @@
 		dio-gpios = <&gpioa 11 0 &gpiob 1 0 &gpioa 3 0
 			     &gpioh 0 0 &gpioc 13 0>;
 		spi-max-frequency = <1000000>;
+		lora-rtcs = <&rtc>;
 	};
 };
 
-&rtc {
-	status = "okay";
-};
+
 
 &eeprom {
 	status = "okay";
