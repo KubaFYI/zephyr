@@ -45,7 +45,7 @@ set(ENV{SOC_DIR}   ${SOC_DIR})
 set(ENV{SHIELD_AS_LIST} "${SHIELD_AS_LIST}")
 set(ENV{CMAKE_BINARY_DIR} ${CMAKE_BINARY_DIR})
 set(ENV{ARCH_DIR}   ${ARCH_DIR})
-set(ENV{GENERATED_DTS_BOARD_CONF} ${GENERATED_DTS_BOARD_CONF})
+set(ENV{DEVICETREE_CONF} ${DEVICETREE_CONF})
 set(ENV{DTS_POST_CPP} ${DTS_POST_CPP})
 set(ENV{DTS_ROOT_BINDINGS} "${DTS_ROOT_BINDINGS}")
 
@@ -91,7 +91,7 @@ foreach(kconfig_target
     CMAKE_BINARY_DIR=$ENV{CMAKE_BINARY_DIR}
     ZEPHYR_TOOLCHAIN_VARIANT=${ZEPHYR_TOOLCHAIN_VARIANT}
     ARCH_DIR=$ENV{ARCH_DIR}
-    GENERATED_DTS_BOARD_CONF=${GENERATED_DTS_BOARD_CONF}
+    DEVICETREE_CONF=${DEVICETREE_CONF}
     DTS_POST_CPP=${DTS_POST_CPP}
     DTS_ROOT_BINDINGS=${DTS_ROOT_BINDINGS}
     ${PYTHON_EXECUTABLE}
@@ -189,25 +189,22 @@ if(EXISTS ${DOTCONFIG} AND EXISTS ${merge_config_files_checksum_file})
 endif()
 
 if(CREATE_NEW_DOTCONFIG)
-  file(WRITE
-    ${merge_config_files_checksum_file}
-    ${merge_config_files_checksum}
-    )
-
-  set(merge_fragments ${merge_config_files})
+  set(input_configs_are_handwritten --handwritten-input-configs)
+  set(input_configs ${merge_config_files})
 else()
-  set(merge_fragments ${DOTCONFIG})
+  set(input_configs ${DOTCONFIG})
 endif()
 
 execute_process(
   COMMAND
   ${PYTHON_EXECUTABLE}
   ${ZEPHYR_BASE}/scripts/kconfig/kconfig.py
+  ${input_configs_are_handwritten}
   ${KCONFIG_ROOT}
   ${DOTCONFIG}
   ${AUTOCONF_H}
   ${PARSED_KCONFIG_SOURCES_TXT}
-  ${merge_fragments}
+  ${input_configs}
   WORKING_DIRECTORY ${APPLICATION_SOURCE_DIR}
   # The working directory is set to the app dir such that the user
   # can use relative paths in CONF_FILE, e.g. CONF_FILE=nrf5.conf
@@ -215,6 +212,14 @@ execute_process(
   )
 if(NOT "${ret}" STREQUAL "0")
   message(FATAL_ERROR "command failed with return code: ${ret}")
+endif()
+
+if(CREATE_NEW_DOTCONFIG)
+  # Write the new configuration fragment checksum. Only do this if kconfig.py
+  # succeeds, to avoid marking zephyr/.config as up-to-date when it hasn't been
+  # regenerated.
+  file(WRITE ${merge_config_files_checksum_file}
+             ${merge_config_files_checksum})
 endif()
 
 # Read out the list of 'Kconfig' sources that were used by the engine.

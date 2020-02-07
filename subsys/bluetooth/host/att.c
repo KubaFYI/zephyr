@@ -18,7 +18,7 @@
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/uuid.h>
 #include <bluetooth/gatt.h>
-#include <bluetooth/hci_driver.h>
+#include <drivers/bluetooth/hci_driver.h>
 
 #define BT_DBG_ENABLED IS_ENABLED(CONFIG_BT_DEBUG_ATT)
 #define LOG_MODULE_NAME bt_att
@@ -2268,9 +2268,7 @@ struct bt_att_req *bt_att_req_alloc(s32_t timeout)
 
 	BT_DBG("req %p", req);
 
-	req->func = NULL;
-	req->destroy = NULL;
-	req->user_data = NULL;
+	memset(req, 0, sizeof(*req));
 
 	return req;
 }

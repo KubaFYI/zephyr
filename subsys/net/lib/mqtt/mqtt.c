@@ -45,8 +45,7 @@ static void disconnect_event_notify(struct mqtt_client *client, int result)
 	struct mqtt_evt evt;
 
 	/* Determine appropriate event to generate. */
-	if (MQTT_HAS_STATE(client, MQTT_STATE_CONNECTED) ||
-	    MQTT_HAS_STATE(client, MQTT_STATE_DISCONNECTING)) {
+	if (MQTT_HAS_STATE(client, MQTT_STATE_CONNECTED)) {
 		evt.type = MQTT_EVT_DISCONNECT;
 		evt.result = result;
 	} else {
@@ -451,7 +450,7 @@ int mqtt_disconnect(struct mqtt_client *client)
 		goto error;
 	}
 
-	MQTT_SET_STATE_EXCLUSIVE(client, MQTT_STATE_DISCONNECTING);
+	client_disconnect(client, 0);
 
 error:
 	mqtt_mutex_unlock(client);
@@ -586,21 +585,34 @@ int mqtt_live(struct mqtt_client *client)
 
 	mqtt_mutex_lock(client);
 
-	if (MQTT_HAS_STATE(client, MQTT_STATE_DISCONNECTING)) {
-		client_disconnect(client, 0);
-	} else {
-		elapsed_time = mqtt_elapsed_time_in_ms_get(
-					client->internal.last_activity);
-
-		if ((client->keepalive > 0) &&
-		    (elapsed_time >= (client->keepalive * 1000))) {
-			(void)mqtt_ping(client);
-		}
+	elapsed_time = mqtt_elapsed_time_in_ms_get(
+				client->internal.last_activity);
+	if ((client->keepalive > 0) &&
+	    (elapsed_time >= (client->keepalive * 1000))) {
+		(void)mqtt_ping(client);
 	}
 
 	mqtt_mutex_unlock(client);
 
 	return 0;
+}
+
+u32_t mqtt_keepalive_time_left(const struct mqtt_client *client)
+{
+	u32_t elapsed_time = mqtt_elapsed_time_in_ms_get(
+					client->internal.last_activity);
+	u32_t keepalive_ms = 1000U * client->keepalive;
+
+	if (client->keepalive == 0) {
+		/* Keep alive not enabled. */
+		return UINT32_MAX;
+	}
+
+	if (keepalive_ms <= elapsed_time) {
+		return 0;
+	}
+
+	return keepalive_ms - elapsed_time;
 }
 
 int mqtt_input(struct mqtt_client *client)
@@ -613,9 +625,7 @@ int mqtt_input(struct mqtt_client *client)
 
 	MQTT_TRC("state:0x%08x", client->internal.state);
 
-	if (MQTT_HAS_STATE(client, MQTT_STATE_DISCONNECTING)) {
-		client_disconnect(client, 0);
-	} else if (MQTT_HAS_STATE(client, MQTT_STATE_TCP_CONNECTED)) {
+	if (MQTT_HAS_STATE(client, MQTT_STATE_TCP_CONNECTED)) {
 		err_code = client_read(client);
 	} else {
 		err_code = -EACCES;

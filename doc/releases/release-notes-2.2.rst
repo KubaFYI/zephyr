@@ -9,7 +9,7 @@ We are pleased to announce the release of Zephyr kernel version 2.2.0.
 
 Major enhancements with this release include:
 
-* <TBD>
+* CANopen protocol support through 3rd party CANopenNode stack
 
 The following sections provide detailed lists of changes by component.
 
@@ -23,6 +23,10 @@ API Changes
 
 Deprecated in this release
 ==========================
+
+* Settings
+
+  * SETTINGS_USE_BASE64, encoding values in base64 is marked for removal.
 
 Stable API changes in this release
 ==================================
@@ -58,6 +62,10 @@ Removed APIs in this release
     SHELL_STATIC_SUBCMD_SET_CREATE
   * SHELL_CREATE_DYNAMIC_CMD (deprecated), replaced by SHELL_DYNAMIC_CMD_CREATE
 
+* Newtron Flash File System (NFFS) was removed. NFFS was removed since it has
+    serious issues, not fixed since a long time. Where it was possible
+    NFFS usage was replaced by LittleFS usage as the better substitute.
+
 Kernel
 ******
 
@@ -72,7 +80,7 @@ Architectures
 
 * ARM:
 
-  * <TBD>
+  * Removed support for CC2650
 
 * POSIX:
 
@@ -267,6 +275,10 @@ Build and Infrastructure
 
 * The minimum Python version supported by Zephyr's build system and tools is
   now 3.6.
+* Renamed :file:`generated_dts_board.h` and :file:`generated_dts_board.conf` to
+  :file:`devicetree.h` and :file:`devicetree.conf`, along with various related
+  identifiers. Including :file:`generated_dts_board.h` now generates a warning
+  saying to include :file:`devicetree.h` instead.
 * <Other items TBD>
 
 Libraries / Subsystems
@@ -300,4 +312,3 @@ release:
 
 .. comment  List derived from GitHub Issue query: ...
    * :github:`issuenumber` - issue title
-

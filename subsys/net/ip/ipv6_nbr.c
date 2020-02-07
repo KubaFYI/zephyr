@@ -997,34 +997,29 @@ static inline bool set_llao(struct net_pkt *pkt,
 	return true;
 }
 
-static inline struct net_nbr *handle_ns_neighbor(struct net_pkt *pkt,
-						 u8_t ll_len)
+static bool read_llao(struct net_pkt *pkt,
+		      u8_t len,
+		      struct net_linkaddr_storage *llstorage)
 {
-	struct net_linkaddr_storage lladdr;
-	struct net_linkaddr nbr_lladdr;
+	u8_t padding;
 
-	lladdr.len = ll_len * 8U - 2;
-
-	if (net_pkt_read(pkt, lladdr.addr, lladdr.len)) {
-		return NULL;
+	llstorage->len = NET_LINK_ADDR_MAX_LENGTH;
+	if (net_pkt_lladdr_src(pkt)->len < llstorage->len) {
+		llstorage->len = net_pkt_lladdr_src(pkt)->len;
 	}
 
-	nbr_lladdr.len = lladdr.len;
-	nbr_lladdr.addr = lladdr.addr;
-
-	/**
-	 * IEEE802154 lladdress is 8 bytes long, so it requires
-	 * 2 * 8 bytes - 2 - padding.
-	 * The formula above needs to be adjusted.
-	 */
-	if (net_pkt_lladdr_src(pkt)->len < nbr_lladdr.len) {
-		nbr_lladdr.len = net_pkt_lladdr_src(pkt)->len;
+	if (net_pkt_read(pkt, llstorage->addr, llstorage->len)) {
+		return false;
 	}
 
-	return net_ipv6_nbr_add(net_pkt_iface(pkt),
-				&NET_IPV6_HDR(pkt)->src,
-				&nbr_lladdr, false,
-				NET_IPV6_NBR_STATE_INCOMPLETE);
+	padding = len * 8U - 2 - llstorage->len;
+	if (padding) {
+		if (net_pkt_skip(pkt, padding)) {
+			return false;
+		}
+	}
+
+	return true;
 }
 
 int net_ipv6_send_na(struct net_if *iface, const struct in6_addr *src,
@@ -1136,6 +1131,10 @@ static enum net_verdict handle_ns_input(struct net_pkt *pkt,
 	struct net_if_addr *ifaddr;
 	const struct in6_addr *src;
 	struct in6_addr *tgt;
+	struct net_linkaddr_storage src_lladdr_s;
+	struct net_linkaddr src_lladdr;
+
+	src_lladdr.len = 0;
 
 	ns_hdr = (struct net_icmpv6_ns_hdr *)net_pkt_get_data(pkt, &ns_access);
 	if (!ns_hdr) {
@@ -1176,15 +1175,12 @@ static enum net_verdict handle_ns_input(struct net_pkt *pkt,
 				goto drop;
 			}
 
-			if (nd_opt_hdr->len > 2) {
-				NET_ERR("DROP: Too long source ll address "
-					"in NS option");
+			if (!read_llao(pkt, nd_opt_hdr->len, &src_lladdr_s)) {
 				goto drop;
 			}
 
-			if (!handle_ns_neighbor(pkt, nd_opt_hdr->len)) {
-				goto drop;
-			}
+			src_lladdr.len = src_lladdr_s.len;
+			src_lladdr.addr = src_lladdr_s.addr;
 
 			break;
 		default:
@@ -1342,6 +1338,15 @@ nexthop_found:
 	}
 
 send_na:
+	if (src_lladdr.len) {
+		if (!net_ipv6_nbr_add(net_pkt_iface(pkt),
+				      &NET_IPV6_HDR(pkt)->src,
+				      &src_lladdr, false,
+				      NET_IPV6_NBR_STATE_INCOMPLETE)) {
+			goto drop;
+		}
+	}
+
 	if (!net_ipv6_send_na(net_pkt_iface(pkt), src,
 			      &ip_hdr->dst, tgt, flags)) {
 		net_pkt_unref(pkt);
@@ -1991,29 +1996,16 @@ int net_ipv6_start_rs(struct net_if *iface)
 }
 
 static inline struct net_nbr *handle_ra_neighbor(struct net_pkt *pkt, u8_t len)
-
 {
 	struct net_linkaddr lladdr;
 	struct net_linkaddr_storage llstorage;
-	u8_t padding;
 
-	llstorage.len = NET_LINK_ADDR_MAX_LENGTH;
-	lladdr.addr = llstorage.addr;
-	lladdr.len = NET_LINK_ADDR_MAX_LENGTH;
-	if (net_pkt_lladdr_src(pkt)->len < lladdr.len) {
-		lladdr.len = net_pkt_lladdr_src(pkt)->len;
-	}
-
-	if (net_pkt_read(pkt, lladdr.addr, lladdr.len)) {
+	if (!read_llao(pkt, len, &llstorage)) {
 		return NULL;
 	}
 
-	padding = len * 8U - 2 - lladdr.len;
-	if (padding) {
-		if (net_pkt_skip(pkt, padding)) {
-			return NULL;
-		}
-	}
+	lladdr.len = llstorage.len;
+	lladdr.addr = llstorage.addr;
 
 	return net_ipv6_nbr_add(net_pkt_iface(pkt),
 				&NET_IPV6_HDR(pkt)->src,
