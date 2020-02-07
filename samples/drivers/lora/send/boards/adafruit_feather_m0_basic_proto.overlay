@@ -1,0 +1,32 @@
+/*
+ * This overlay suits Adafrut Feather M0 LoRa edition with a RF95x chip connected over SPI
+ * 
+ * Copyritght 2020: R3-IoT Ltd.
+ */
+
+
+&tc4 {
+	status = "okay";
+	#lora-rtc-cells = <0>;
+};
+
+&sercom4 {
+	status = "okay";
+	compatible = "atmel,sam0-spi";
+
+	cs-gpios = <&porta 6 0>;
+
+	dipo = <21>;
+	dopo = <19>;
+
+	sx1276@0 {
+		compatible = "semtech,sx1276";
+		reg = <0>;
+		label = "sx1276";
+		reset-gpios = <&portb 13 0>;
+		dio-gpios = <&porta 16 0 &porta 18 0 &porta 7 0
+			     &porta 19 0 &porta 20 0>;
+		lora-rtcs = <&tc4>;
+		spi-max-frequency = <1000000>;
+	};
+};
