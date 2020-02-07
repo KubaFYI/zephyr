@@ -214,6 +214,7 @@ config LOG_PROCESS_THREAD_STACK_SIZE
 	default 1024 if NO_OPTIMIZATIONS
 	default 1024 if XTENSA
 	default 4096 if (X86 && X86_64)
+	default 4096 if ARM64
 	default 768
 	help
 	  Set the internal stack size for log processing thread.
@@ -429,7 +430,7 @@ endif # LOG_BACKEND_RTT_BUFFER
 # interrupted by an interrupt.
 config LOG_BACKEND_RTT_FORCE_PRINTK
 	bool
-	default y if LOG_BACKEND_RTT_BUFFER = 0
+	default y if LOG_BACKEND_RTT_BUFFER = 0 && RTT_CONSOLE
 	select LOG_PRINTK
 
 endif # LOG_BACKEND_RTT
@@ -442,7 +443,7 @@ config LOG_BACKEND_NATIVE_POSIX
 
 config LOG_BACKEND_XTENSA_SIM
 	bool "Enable xtensa simulator backend"
-	depends on SOC_XTENSA_SAMPLE_CONTROLLER
+	depends on SOC_XTENSA_SAMPLE_CONTROLLER || SOC_INTEL_APL_ADSP
 	help
 	  Enable backend in xtensa simulator
 
@@ -506,6 +507,27 @@ config LOG_BACKEND_NET_SYST_ENABLE
 	  When enabled backend is using networking to output syst format logs.
 
 endif # LOG_BACKEND_NET
+
+config LOG_BACKEND_ADSP
+	bool "Enable Intel ADSP backend"
+	depends on SOC_INTEL_APL_ADSP
+	select RING_BUFFER
+	help
+	  Enable backend in APL ADSP using memory mailbox
+
+if LOG_BACKEND_ADSP
+
+config LOG_BACKEND_ADSP_RINGBUF_BASE
+	hex "Ringbuf base address"
+	help
+	  Address of the ring buffer in the memory.
+
+config LOG_BACKEND_ADSP_RINGBUF_SIZE
+	hex "Size of the ring buffer"
+	help
+	  Size of the ring buffer.
+
+endif # LOG_BACKEND_ADSP
 
 config LOG_BACKEND_SHOW_COLOR
 	bool "Enable colors in the backend"

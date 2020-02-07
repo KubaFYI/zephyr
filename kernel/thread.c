@@ -280,7 +280,7 @@ const char *k_thread_state_str(k_tid_t thread_id)
 		return "pending";
 		break;
 	case _THREAD_PRESTART:
-		return "restart";
+		return "prestart";
 		break;
 	case _THREAD_DEAD:
 		return "dead";
@@ -369,16 +369,7 @@ void z_check_stack_sentinel(void)
 #ifdef CONFIG_MULTITHREADING
 void z_impl_k_thread_start(struct k_thread *thread)
 {
-	k_spinlock_key_t key = k_spin_lock(&lock); /* protect kernel queues */
-
-	if (z_has_thread_started(thread)) {
-		k_spin_unlock(&lock, key);
-		return;
-	}
-
-	z_mark_thread_as_started(thread);
-	z_ready_thread(thread);
-	z_reschedule(&lock, key);
+	z_sched_start(thread);
 }
 
 #ifdef CONFIG_USERSPACE

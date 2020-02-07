@@ -789,18 +789,43 @@ static void vw_host_rst_warn_isr(struct device *dev)
 {
 	u8_t status;
 
+#ifndef CONFIG_ESPI_AUTOMATIC_WARNING_ACKNOWLEDGE
+	struct espi_xec_data *data = (struct espi_xec_data *)(dev->driver_data);
+	struct espi_event evt = { ESPI_BUS_EVENT_VWIRE_RECEIVED, 0, 0 };
+#endif
+
 	espi_xec_receive_vwire(dev, ESPI_VWIRE_SIGNAL_HOST_RST_WARN, &status);
+
+#ifndef CONFIG_ESPI_AUTOMATIC_WARNING_ACKNOWLEDGE
+	evt.evt_details = ESPI_VWIRE_SIGNAL_HOST_RST_WARN;
+	evt.evt_details = ESPI_BUS_EVENT_VWIRE_RECEIVED;
+	espi_send_callbacks(&data->callbacks, dev, evt);
+#else
+
 	k_busy_wait(ESPI_XEC_VWIRE_ACK_DELAY);
 	espi_xec_send_vwire(dev, ESPI_VWIRE_SIGNAL_HOST_RST_ACK, status);
+#endif
 }
 
 static void vw_sus_warn_isr(struct device *dev)
 {
 	u8_t status;
 
+#ifndef CONFIG_ESPI_AUTOMATIC_WARNING_ACKNOWLEDGE
+	struct espi_xec_data *data = (struct espi_xec_data *)(dev->driver_data);
+	struct espi_event evt = { ESPI_BUS_EVENT_VWIRE_RECEIVED, 0, 0 };
+#endif
+
 	espi_xec_receive_vwire(dev, ESPI_VWIRE_SIGNAL_SUS_WARN, &status);
+
+#ifndef CONFIG_ESPI_AUTOMATIC_WARNING_ACKNOWLEDGE
+	evt.evt_details = ESPI_BUS_EVENT_VWIRE_RECEIVED;
+	evt.evt_data = status;
+	espi_send_callbacks(&data->callbacks, dev, evt);
+#else
 	k_busy_wait(ESPI_XEC_VWIRE_ACK_DELAY);
 	espi_xec_send_vwire(dev, ESPI_VWIRE_SIGNAL_SUS_ACK, status);
+#endif
 }
 
 static void ibf_isr(struct device *dev)
@@ -1075,21 +1100,21 @@ static int espi_xec_init(struct device *dev)
 	/* Enable aggregated interrupt block for eSPI bus events */
 	MCHP_GIRQ_BLK_SETEN(config->bus_girq_id);
 	IRQ_CONNECT(DT_INST_0_MICROCHIP_XEC_ESPI_IRQ_0,
-		    CONFIG_ESPI_INIT_PRIORITY, espi_xec_bus_isr,
+		    DT_ESPI_MCHP_XEC_0_IRQ_PRIORITY, espi_xec_bus_isr,
 		    DEVICE_GET(espi_xec_0), 0);
 	irq_enable(DT_INST_0_MICROCHIP_XEC_ESPI_IRQ_0);
 
 	/* Enable aggregated interrupt block for eSPI VWire events */
 	MCHP_GIRQ_BLK_SETEN(config->vw_girq_id);
 	IRQ_CONNECT(DT_INST_0_MICROCHIP_XEC_ESPI_IRQ_1,
-		    CONFIG_ESPI_INIT_PRIORITY, espi_xec_vw_isr,
+		    DT_ESPI_MCHP_XEC_1_IRQ_PRIORITY, espi_xec_vw_isr,
 		    DEVICE_GET(espi_xec_0), 0);
 	irq_enable(DT_INST_0_MICROCHIP_XEC_ESPI_IRQ_1);
 
 	/* Enable aggregated interrupt block for eSPI peripheral channel */
 	MCHP_GIRQ_BLK_SETEN(config->pc_girq_id);
 	IRQ_CONNECT(DT_INST_0_MICROCHIP_XEC_ESPI_IRQ_2,
-		    CONFIG_ESPI_INIT_PRIORITY, espi_xec_periph_isr,
+		    DT_ESPI_MCHP_XEC_2_IRQ_PRIORITY, espi_xec_periph_isr,
 		    DEVICE_GET(espi_xec_0), 0);
 	irq_enable(DT_INST_0_MICROCHIP_XEC_ESPI_IRQ_2);
 

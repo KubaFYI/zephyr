@@ -6,9 +6,8 @@
 
 #include <zephyr.h>
 #include <kernel_structs.h>
-#include <init.h>
 #include <kernel_internal.h>
-#include "ctf_top.h"
+#include <ctf_top.h>
 
 void sys_trace_thread_switched_out(void)
 {
@@ -89,8 +88,8 @@ void sys_trace_thread_info(struct k_thread *thread)
 #if defined(CONFIG_THREAD_STACK_INFO)
 	ctf_top_thread_info(
 		(u32_t)(uintptr_t)thread,
-		thread->stack_info.size,
-		thread->stack_info.start
+		thread->stack_info.start,
+		thread->stack_info.size
 		);
 #endif
 }
@@ -142,14 +141,3 @@ void sys_trace_end_call(unsigned int id)
 {
 	ctf_top_end_call(id);
 }
-
-static int ctf_top_init(struct device *arg)
-{
-	ARG_UNUSED(arg);
-
-	ctf_bottom_configure();
-	ctf_bottom_start();
-	return 0;
-}
-
-SYS_INIT(ctf_top_init, PRE_KERNEL_1, 0);

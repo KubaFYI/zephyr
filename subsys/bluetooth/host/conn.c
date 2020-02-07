@@ -47,8 +47,8 @@ NET_BUF_POOL_DEFINE(acl_tx_pool, CONFIG_BT_L2CAP_TX_BUF_COUNT,
 
 #if CONFIG_BT_L2CAP_TX_FRAG_COUNT > 0
 
-#if defined(BT_CTLR_TX_BUFFER_SIZE)
-#define FRAG_SIZE BT_L2CAP_BUF_SIZE(BT_CTLR_TX_BUFFER_SIZE - 4)
+#if defined(CONFIG_BT_CTLR_TX_BUFFER_SIZE)
+#define FRAG_SIZE BT_L2CAP_BUF_SIZE(CONFIG_BT_CTLR_TX_BUFFER_SIZE - 4)
 #else
 #define FRAG_SIZE BT_L2CAP_BUF_SIZE(CONFIG_BT_L2CAP_TX_MTU)
 #endif
@@ -1692,8 +1692,13 @@ void bt_conn_set_state(struct bt_conn *conn, bt_conn_state_t state)
 			k_poll_signal_raise(&conn_change, 0);
 			/* The last ref will be dropped during cleanup */
 		} else if (old_state == BT_CONN_CONNECT) {
-			/* conn->err will be set in this case */
-			notify_connected(conn);
+			/* LE Create Connection command failed. This might be
+			 * directly from the API, don't notify application in
+			 * this case.
+			 */
+			if (conn->err) {
+				notify_connected(conn);
+			}
 			bt_conn_unref(conn);
 		} else if (old_state == BT_CONN_CONNECT_SCAN) {
 			/* this indicate LE Create Connection with peer address
@@ -2142,7 +2147,7 @@ int bt_conn_create_auto_le(const struct bt_le_conn_param *param)
 	err = bt_le_create_conn(conn);
 	if (err) {
 		BT_ERR("Failed to start whitelist scan");
-
+		conn->err = 0;
 		bt_conn_set_state(conn, BT_CONN_DISCONNECTED);
 		bt_conn_unref(conn);
 		return err;
@@ -2257,6 +2262,7 @@ struct bt_conn *bt_conn_create_le(const bt_addr_le_t *peer,
 	bt_conn_set_state(conn, BT_CONN_CONNECT);
 
 	if (bt_le_create_conn(conn)) {
+		conn->err = 0;
 		bt_conn_set_state(conn, BT_CONN_DISCONNECTED);
 		bt_conn_unref(conn);
 
