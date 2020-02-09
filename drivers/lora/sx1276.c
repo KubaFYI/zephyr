@@ -11,6 +11,7 @@
 #include <zephyr.h>
 
 #include <sx1276/sx1276.h>
+#include <timer.h>
 
 #define LOG_LEVEL CONFIG_LORA_LOG_LEVEL
 #include <logging/log.h>
@@ -28,10 +29,11 @@ LOG_MODULE_REGISTER(sx1276);
 #define BOARD_TCXO_WAKEUP_TIME	5
 
 /* TODO: Use RTC backup */
-static uint32_t backup_reg[2] = { 0 ,0 };
-static uint32_t saved_time;
+static volatile uint32_t backup_reg[2] = { 0 ,0 };
+static volatile uint32_t saved_time;
 
 extern DioIrqHandler *DioIrq[];
+static struct k_timer lora_timer;
 
 int sx1276_dio_pins[SX1276_MAX_DIO] = {
 	DT_INST_0_SEMTECH_SX1276_DIO_GPIOS_PIN_0,
@@ -115,6 +117,12 @@ void BoardCriticalSectionEnd(uint32_t *mask)
 	irq_unlock(*mask);
 }
 
+static void lora_callback(struct k_timer *timer)
+{
+	k_timer_stop(&lora_timer);
+	TimerIrqHandler();
+}
+
 uint32_t RtcGetTimerValue(void)
 {
 	return counter_read(dev_data.counter);
@@ -128,17 +136,12 @@ uint32_t RtcGetTimerElapsedTime(void)
 u32_t RtcGetMinimumTimeout(void)
 {
 	/* TODO: Get this value from counter driver */
-	return 3;
+	return 1;
 }
 
 void RtcSetAlarm(uint32_t timeout)
 {
-	struct counter_alarm_cfg alarm_cfg;
-
-	alarm_cfg.flags = 0;
-	alarm_cfg.ticks = timeout;
-
-	counter_set_channel_alarm(dev_data.counter, 0, &alarm_cfg);
+	k_timer_start(&lora_timer, K_SECONDS(timeout), K_NO_WAIT);
 }
 
 uint32_t RtcSetTimerContext(void)
@@ -534,6 +537,7 @@ static int sx1276_lora_init(struct device *dev)
 
 #ifdef CONFIG_LORAWAN
 	counter_start(dev_data.counter);
+	k_timer_init(&lora_timer, lora_callback, NULL);
 #endif
 
 	k_sem_init(&dev_data.data_sem, 0, UINT_MAX);

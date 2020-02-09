@@ -26,7 +26,7 @@ static void test_counter_interrupt_fn(struct device *counter_dev,
 	int err;
 
 	printk("!!! Alarm !!!\n");
-	printk("Now: %u\n", now_sec);
+	printk("Now: %u ticks: %d\n", now_sec, counter_read(counter_dev));
 
 	/* Set a new alarm with a double length duration */
 	config->ticks = config->ticks * 2U;

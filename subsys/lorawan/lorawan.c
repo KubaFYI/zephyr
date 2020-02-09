@@ -42,6 +42,8 @@
 #include <logging/log.h>
 LOG_MODULE_REGISTER(lorawan);
 
+K_SEM_DEFINE(lorawan_config_sem, 0, 1);
+
 /* MAC status strings */
 const char *to_status_str[] = {
     "OK",                            /* LORAMAC_STATUS_OK */
@@ -101,7 +103,7 @@ static void McpsConfirm(McpsConfirm_t *mcpsConfirm)
 {
 	if (mcpsConfirm->Status != LORAMAC_EVENT_INFO_STATUS_OK) {
 		LOG_ERR("McpsRequest failed : %s",
-			log_strdup(to_status_str[mcpsConfirm->Status]));
+			log_strdup(to_event_info_status_str[mcpsConfirm->Status]));
 	} else {
 		LOG_DBG("McpsRequest success!");
 	}
@@ -111,7 +113,7 @@ static void McpsIndication(McpsIndication_t *mcpsIndication)
 {
 	if (mcpsIndication->Status != LORAMAC_EVENT_INFO_STATUS_OK) {
 		LOG_ERR("McpsIndication failed : %s",
-			log_strdup(to_status_str[mcpsIndication->Status]));
+			log_strdup(to_event_info_status_str[mcpsIndication->Status]));
 		return;
 	}
 
@@ -131,7 +133,7 @@ static void MlmeConfirm( MlmeConfirm_t *mlmeConfirm )
 
 	if (mlmeConfirm->Status != LORAMAC_EVENT_INFO_STATUS_OK) {
 		LOG_ERR("McpsIndication failed : %s",
-			log_strdup(to_status_str[mlmeConfirm->Status]));
+			log_strdup(to_event_info_status_str[mlmeConfirm->Status]));
 		return;
 	}
 
@@ -147,6 +149,8 @@ static void MlmeConfirm( MlmeConfirm_t *mlmeConfirm )
 	default:
 		break;
 	}
+
+	k_sem_give(&lorawan_config_sem);
 }
 
 static void MlmeIndication( MlmeIndication_t *mlmeIndication )
@@ -224,6 +228,63 @@ int lorawan_join_network(enum lorawan_datarate datarate, enum lorawan_act_type m
 				log_strdup(to_status_str[status]));
 			return -EINVAL;	
 		}
+
+		LOG_INF("Network join request sent!");
+
+		/* HACK: See if we are getting Join Accept from server */
+		while(1) {
+			LoRaMacProcess();
+			k_sleep(500);
+		}
+
+		k_sem_take(&lorawan_config_sem, K_FOREVER);
+	}
+
+	return 0;
+}
+
+int lorawan_send(u8_t port, enum lorawan_datarate datarate, u8_t *data,
+		 u8_t len, bool confirm, u8_t tries)
+{
+	LoRaMacStatus_t status;
+	McpsReq_t mcpsReq;
+	LoRaMacTxInfo_t txInfo;
+
+	if (data == NULL) {
+		return -EINVAL;
+	}
+
+	/* TODO: Do we need to make a copy here? */
+	//memcpy(data, data, len);
+
+	if( LoRaMacQueryTxPossible( len, &txInfo ) != LORAMAC_STATUS_OK ) {
+		/* Send empty frame in order to flush MAC commands */
+		mcpsReq.Type = MCPS_UNCONFIRMED;
+		mcpsReq.Req.Unconfirmed.fBuffer = NULL;
+		mcpsReq.Req.Unconfirmed.fBufferSize = 0;
+		mcpsReq.Req.Unconfirmed.Datarate = DR_0;
+	} else {
+		if (confirm == false) {
+			mcpsReq.Type = MCPS_UNCONFIRMED;
+			mcpsReq.Req.Unconfirmed.fPort = port;
+			mcpsReq.Req.Unconfirmed.fBuffer = data;
+			mcpsReq.Req.Unconfirmed.fBufferSize = len;
+			mcpsReq.Req.Unconfirmed.Datarate = datarate;
+		} else {
+			mcpsReq.Type = MCPS_CONFIRMED;
+			mcpsReq.Req.Confirmed.fPort = port;
+			mcpsReq.Req.Confirmed.fBuffer = data;
+			mcpsReq.Req.Confirmed.fBufferSize = len;
+			mcpsReq.Req.Confirmed.NbTrials = tries;
+			mcpsReq.Req.Confirmed.Datarate = datarate;
+		}
+	}
+
+	status = LoRaMacMcpsRequest(&mcpsReq);
+	if (status != LORAMAC_STATUS_OK) {
+		LOG_ERR("LoRaWAN Send failed: %s",
+			log_strdup(to_status_str[status]));
+		return -EINVAL;
 	}
 
 	return 0;
