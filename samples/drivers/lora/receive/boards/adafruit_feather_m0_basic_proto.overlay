@@ -16,16 +16,16 @@
 
 	cs-gpios = <&porta 6 0>;
 
-	dipo = <21>;
-	dopo = <19>;
+	dipo = <0>;
+	dopo = <1>;
 
 	sx1276@0 {
 		compatible = "semtech,sx1276";
 		reg = <0>;
 		label = "sx1276";
 		reset-gpios = <&portb 13 0>;
-		dio-gpios = <&porta 16 0 &porta 18 0 &porta 7 0
-			     &porta 19 0 &porta 20 0>;
+		dio-gpios = <&porta 9 0>;
+		
 		lora-rtcs = <&tc4>;
 		spi-max-frequency = <1000000>;
 	};
