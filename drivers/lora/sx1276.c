@@ -11,7 +11,6 @@
 #include <zephyr.h>
 
 #include <sx1276/sx1276.h>
-#include <timer.h>
 
 #define LOG_LEVEL CONFIG_LORA_LOG_LEVEL
 #include <logging/log.h>
@@ -34,6 +33,7 @@ static volatile uint32_t backup_reg[2] = { 0 ,0 };
 static volatile uint32_t saved_time;
 
 extern DioIrqHandler *DioIrq[];
+
 struct counter_alarm_cfg alarm_cfg;
 
 struct sx1276_dio {
@@ -127,7 +127,6 @@ void BoardCriticalSectionEnd(uint32_t *mask)
 void counter_isr(struct device *counter_dev, u8_t chan_id,
 			u32_t ticks, void *user_data)
 {
-	printk("ISR\n");
 	TimerIrqHandler();
 }
 
@@ -147,20 +146,17 @@ uint32_t RtcGetTimerValue(void)
 
 uint32_t RtcGetTimerElapsedTime(void)
 {
-	LOG_INF("elapsed: %d\n", (uint32_t)(counter_read(dev_data.counter)));
 	return (uint32_t)(counter_read(dev_data.counter) - saved_time);
 }
 
 u32_t RtcGetMinimumTimeout(void)
 {
 	/* TODO: Get this value from counter driver */
-	return 2;
+	return 1;
 }
 
 void RtcSetAlarm(uint32_t timeout)
 {
-	LOG_INF("timeout: %d\n", timeout);
-
 	alarm_cfg.flags = 0;
 	alarm_cfg.ticks = timeout;
 	alarm_cfg.callback = counter_isr;
@@ -171,7 +167,6 @@ void RtcSetAlarm(uint32_t timeout)
 
 uint32_t RtcSetTimerContext(void)
 {
-	// saved_time = counter_read(dev_data.counter);
 	counter_get_value(dev_data.counter, &saved_time);
 
 	return (uint32_t)saved_time;

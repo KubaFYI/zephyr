@@ -105,7 +105,7 @@ void McpsConfirm(McpsConfirm_t *mcpsConfirm)
 {
 	if (mcpsConfirm->Status != LORAMAC_EVENT_INFO_STATUS_OK) {
 		LOG_ERR("McpsRequest failed : %s",
-			log_strdup(to_status_str[mcpsConfirm->Status]));
+			log_strdup(to_event_info_status_str[mcpsConfirm->Status]));
 	} else {
 		LOG_DBG("McpsRequest success!");
 	}
@@ -115,7 +115,7 @@ void McpsIndication(McpsIndication_t *mcpsIndication)
 {
 	if (mcpsIndication->Status != LORAMAC_EVENT_INFO_STATUS_OK) {
 		LOG_ERR("McpsIndication failed : %s",
-			log_strdup(to_status_str[mcpsIndication->Status]));
+			log_strdup(to_event_info_status_str[mcpsIndication->Status]));
 		return;
 	}
 
@@ -135,7 +135,7 @@ void MlmeConfirm( MlmeConfirm_t *mlmeConfirm )
 
 	if (mlmeConfirm->Status != LORAMAC_EVENT_INFO_STATUS_OK) {
 		LOG_ERR("McpsIndication failed : %s",
-			log_strdup(to_status_str[mlmeConfirm->Status]));
+			log_strdup(to_event_info_status_str[mlmeConfirm->Status]));
 		return;
 	}
 
@@ -324,11 +324,10 @@ void lorawan_spinner(void *unused1, void *unused2, void *unused3)
 	ARG_UNUSED(unused1);
 	ARG_UNUSED(unused2);
 	ARG_UNUSED(unused3);
-	
-	int i=0,j=0;
+
 	while (1) {
 		LoRaMacProcess();
-		k_sleep(1);
+		k_sleep(50);
 	}
 
 }
