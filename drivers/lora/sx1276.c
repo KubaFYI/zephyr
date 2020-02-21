@@ -27,6 +27,8 @@ LOG_MODULE_REGISTER(sx1276);
 
 #define BOARD_TCXO_WAKEUP_TIME	5
 
+#define SX1276_RTC_ALARM_CHANNEL 0
+
 /* TODO: Use RTC backup */
 static volatile uint32_t backup_reg[2] = { 0 ,0 };
 static volatile uint32_t saved_time;
@@ -71,7 +73,13 @@ bool SX1276CheckRfFrequency(uint32_t frequency)
 
 void RtcStopAlarm(void)
 {
-	counter_stop(dev_data.counter);
+	saved_time = 0;
+	counter_cancel_channel_alarm(dev_data.counter, SX1276_RTC_ALARM_CHANNEL);
+}
+
+void RtcStartAlarm( uint32_t timeout )
+{
+	counter_start(dev_data.counter);
 }
 
 void SX1276SetAntSwLowPower(bool status)
@@ -154,16 +162,17 @@ void RtcSetAlarm(uint32_t timeout)
 	LOG_INF("timeout: %d\n", timeout);
 
 	alarm_cfg.flags = 0;
-	alarm_cfg.ticks = 2;
+	alarm_cfg.ticks = timeout;
 	alarm_cfg.callback = counter_isr;
 	alarm_cfg.user_data = NULL;
 
-	counter_set_channel_alarm(dev_data.counter, 0, &alarm_cfg);
+	counter_set_channel_alarm(dev_data.counter, SX1276_RTC_ALARM_CHANNEL, &alarm_cfg);
 }
 
 uint32_t RtcSetTimerContext(void)
 {
-	saved_time = counter_read(dev_data.counter);
+	// saved_time = counter_read(dev_data.counter);
+	counter_get_value(dev_data.counter, &saved_time);
 
 	return (uint32_t)saved_time;
 }
@@ -218,7 +227,6 @@ static void sx1276_irq_callback(struct device *dev,
 
 	pin = find_lsb_set(pins) - 1;
 
-    printk("%s: %d pin: %d\n", __func__, __LINE__, pin);
 	for (i = 0; i < SX1276_MAX_DIO; i++) {
 		if (pin == sx1276_dios[i].pin) {
 			(*DioIrq[i])(NULL);
@@ -302,7 +310,6 @@ int sx1276_write(u8_t reg_addr, u8_t *data, u8_t len)
 void SX1276WriteBuffer(u16_t addr, u8_t *buffer, u8_t size)
 {
 	int ret;
-
 	ret = sx1276_write(addr, buffer, size);
 	if (ret < 0) {
 		LOG_ERR("Unable to write address: 0x%x", addr);
@@ -490,6 +497,7 @@ const struct Radio_s Radio = {
 	.Random = SX1276Random,
 	.SetRxConfig = SX1276SetRxConfig,
 	.SetTxConfig = SX1276SetTxConfig,
+	.CheckRfFrequency = SX1276CheckRfFrequency,
 	.TimeOnAir = SX1276GetTimeOnAir,
 	.Send = SX1276Send,
 	.Sleep = SX1276SetSleep,
