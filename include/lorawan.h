@@ -79,4 +79,9 @@ extern int lorawan_join_network(enum lorawan_datarate datarate,
 extern int lorawan_send(u8_t port, enum lorawan_datarate datarate,
 			u8_t *data, u8_t len, bool confirm, u8_t tries);
 
+#define LORAWAN_THREAD_PRIORITY 1
+#define LORAWAN_STACK_SIZE (1024 + CONFIG_TEST_EXTRA_STACKSIZE)
+static K_THREAD_STACK_DEFINE(lorawan_stack, LORAWAN_STACK_SIZE);
+static struct k_thread lorawan_thread;
+
 #endif	/* ZEPHYR_INCLUDE_LORAWAN_H_ */

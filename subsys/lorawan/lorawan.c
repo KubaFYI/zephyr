@@ -93,6 +93,8 @@ const char *to_event_info_status_str[] = {
     "Beacon not found"               /* LORAMAC_EVENT_INFO_STATUS_BEACON_NOT_FOUND */
 };
 
+void lorawan_spinner(void *unused1, void *unused2, void *unused3);
+
 struct lorawan_data {
 };
 
@@ -231,12 +233,6 @@ int lorawan_join_network(enum lorawan_datarate datarate, enum lorawan_act_type m
 
 		LOG_INF("Network join request sent!");
 
-		while (1) {
-			//LOG_INF("LoRaMacProcess");
-			LoRaMacProcess();
-			k_sleep(1);
-		}
-
 		k_sem_take(&lorawan_config_sem, K_FOREVER);
 	}
 
@@ -312,9 +308,29 @@ static int lorawan_init(struct device *dev)
 
 	LoRaMacStart();
 
+	k_thread_create(&lorawan_thread, &lorawan_stack[0], LORAWAN_STACK_SIZE,
+				lorawan_spinner, NULL, NULL, NULL,
+				LORAWAN_THREAD_PRIORITY, K_USER, K_FOREVER);
+
+	k_thread_start(&lorawan_thread);
+
 	LOG_INF("LoRaMAC Initialized");
 
 	return 0;
+}
+
+void lorawan_spinner(void *unused1, void *unused2, void *unused3)
+{
+	ARG_UNUSED(unused1);
+	ARG_UNUSED(unused2);
+	ARG_UNUSED(unused3);
+	
+	int i=0,j=0;
+	while (1) {
+		LoRaMacProcess();
+		k_sleep(1);
+	}
+
 }
 
 SYS_INIT(lorawan_init, APPLICATION, CONFIG_KERNEL_INIT_PRIORITY_DEVICE);
