@@ -24,6 +24,7 @@ properties:
         Up to six pins that produce service interrupts from the modem.
 
         These signals are normally active-high.
+        Only the first one is necessary for basic operation.
 
     lora-rtcs:
       type: phandle-array
