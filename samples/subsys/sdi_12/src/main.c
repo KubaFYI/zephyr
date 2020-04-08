@@ -7,6 +7,7 @@
 */
 #include <zephyr.h>
 #include <drivers/gpio.h>
+#include <drivers/pinmux.h>
 #include <power/reboot.h>
 #include <settings/settings.h>
 #include <sdi_12/sdi_12.h>
@@ -33,12 +34,22 @@ void main(void)
     double data[1];
     int datalen = 1;
 
-    uart_dev = device_get_binding("SERCOM1");
+#ifdef CONFIG_BOARD_ADAFRUIT_FEATHER_M0_BASIC_PROTO
+    struct device *muxa = device_get_binding(DT_ATMEL_SAM0_PINMUX_PINMUX_A_LABEL);
 
-    LOG_INF("Pre-init device");
+    pinmux_pin_set(muxa, 16, PINMUX_FUNC_C);
+    pinmux_pin_set(muxa, 18, PINMUX_FUNC_C);
+    uart_dev = device_get_binding("SERCOM1");
+#else
+    uart_dev = device_get_binding("YOUR_SOC_UART_LABEL");
+#endif
+
+
+    LOG_INF("uart dev: 0x%x", uart_dev);
     ret = sdi_12_init(uart_dev);
     if (ret != 0) {
         LOG_ERR("Initialization failed!");
+        return;
     }
 
 
