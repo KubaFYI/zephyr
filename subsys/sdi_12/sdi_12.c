@@ -100,7 +100,6 @@ static SDI_12_PAYLOAD_TYPE_e sdi_12_resp_param[SDI_12_CMD_TYPE_MAX] = \
 		SDI_12_VAL_PAYLD	// SDI_12_CMD_CONT_MEAS_CRC
 	};
 
-
 int8_t sdi_12_cmd_n_resp(struct device *uart_dev, SDI_12_CMD_TYPE_e cmd_type,
             char address, char param_cmd, void* param_resp);
 
@@ -111,67 +110,6 @@ int8_t sdi_12_prep_command(char *cmd, char address,
 				SDI_12_CMD_TYPE_e cmd_type, char param);
 
 void sdi_12_calc_crc_ascii(char *cmd, uint8_t cmd_len, char *crc);
-
-/*
- * A quick implementation of strtod to compensate for Zephyr's lack of the
- * function.
- */
-static double strtod (const char *str, char **endptr)
-{
-	int idx;
-	double result;
-	double exp_part;
-	char *str_aux;
-	char *str_end;
-
-	int chars_consumed;
-	int exponent = 0;
-
-	result = (double)strtol(str, &str_aux, 10);
-
-	chars_consumed = (str_aux-str)/sizeof(str[0]);
-
-	/* Decimal part */
-	if (str_aux[0] == '.') {
-		str_aux++;
-		chars_consumed++;
-		while ( isdigit(str_aux[exponent]) != 0 ) {
-			exponent++;
-		}
-
-		if (exponent > 0) {
-
-			exp_part = (double)strtol(str_aux, &str_end, 10);
-			chars_consumed += (str_end-str_aux)/sizeof(str_aux[0]);
-
-			if ( exp_part != 0.0 ) {
-				for (idx=(str_end-str_aux) / sizeof(*str_aux); 
-					idx > 0;
-					idx--) {
-					exp_part /= 10;
-				}
-			} else {
-				str_end = str_aux - 1;
-			}
-
-			if (result >= 0) {
-				result += exp_part;
-			} else {
-				result -= exp_part;
-			}
-		}
-
-	} else {
-		str_end = str_aux + 1;
-	}
-
-	if (endptr != NULL) {
-		*endptr = (char*)str;
-		*endptr += (chars_consumed * sizeof(str[0]));
-	}
-
-	return result;
-}
 
 int8_t sdi_12_init(struct device *uart_dev)
 {
