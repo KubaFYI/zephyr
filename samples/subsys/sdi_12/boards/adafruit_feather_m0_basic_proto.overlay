@@ -7,6 +7,6 @@
 	status = "okay";
 	compatible = "atmel,sam0-uart";
 	current-speed = <1200>;
-	rxpo = <1>;
-	txpo = <3>;
+	rxpo = <2>;
+	txpo = <0>;
 };
