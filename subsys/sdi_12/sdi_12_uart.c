@@ -26,7 +26,8 @@ int8_t sdi_12_uart_send_break(struct device *uart_dev);
 int8_t sdi_12_uart_tx(struct device *uart_dev, uint8_t *buffer, unsigned int len);
 
 int8_t sdi_12_uart_rx(struct device *uart_dev, uint8_t *buffer, unsigned int len,
-				char *terminator, unsigned int timeout);
+				char *terminator, unsigned int timeout_start,
+				unsigned int timeout_end);
 
 
 static void sdi_12_uart_rx_tmr_handler(struct k_timer *timer)
@@ -74,6 +75,7 @@ int8_t sdi_12_uart_send_break(struct device *uart_dev)
 
 	LOG_DBG("Sending break");
 	uart_poll_out(uart_dev, '\0');
+	k_sleep(15);
 	uart_conf.baudrate = SDI_12_BAUDRATE;
 
 	ret = uart_configure(uart_dev, &uart_conf);
@@ -100,7 +102,8 @@ int8_t sdi_12_uart_tx(struct device *uart_dev, uint8_t *buffer, unsigned int len
 }
 
 int8_t sdi_12_uart_rx(struct device *uart_dev, uint8_t *buffer, unsigned int len,
-				char *terminator, unsigned int timeout)
+				char *terminator, unsigned int timeout_start,
+				unsigned int timeout_end)
 {
 	/* For now this has an ugly, blocking implementation as a quick
 	 * placeholder
@@ -108,6 +111,8 @@ int8_t sdi_12_uart_rx(struct device *uart_dev, uint8_t *buffer, unsigned int len
 	int idx;
 	char c;
 	int term_size;
+	bool first_char_in = false;
+	s32_t timer_rem;
 
 	if (terminator != NULL) {
 		term_size = strlen(terminator);
@@ -116,14 +121,13 @@ int8_t sdi_12_uart_rx(struct device *uart_dev, uint8_t *buffer, unsigned int len
 	}
 
 	rx_timeout = 0;
-	k_timer_start(&rx_timeout_timer, timeout,
-			timeout);
+	k_timer_start(&rx_timeout_timer, timeout_start, timeout_start);
 
 	for ( idx = 0; idx < len-1; idx++ ) {
 		while ( uart_poll_in(uart_dev, &c) != 0 ) {
 			if ( rx_timeout != 0) {
 				LOG_WRN("Response timeout");
-				buffer[++idx] = '\0';
+				buffer[idx] = '\0';
 				LOG_DBG("RX: %s", log_strdup(buffer));
 				return SDI_12_STATUS_TIMEOUT;
 			}
@@ -133,6 +137,13 @@ int8_t sdi_12_uart_rx(struct device *uart_dev, uint8_t *buffer, unsigned int len
 		}
 
 		buffer[idx] = c;
+		if ( !first_char_in ) {
+			first_char_in = true;
+			timer_rem = k_timer_remaining_get(&rx_timeout_timer);
+			k_timer_start(&rx_timeout_timer,
+				      timeout_end - timeout_start + timer_rem,
+				      timeout_end - timeout_start + timer_rem);
+		}
 
 		if (term_size > 0 && idx >= term_size-1) {
 			if (strncmp(&(buffer[idx-term_size+1]),

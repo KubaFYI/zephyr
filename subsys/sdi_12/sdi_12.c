@@ -25,6 +25,18 @@
 #include <logging/log.h>
 LOG_MODULE_REGISTER(sdi_12);
 
+static char last_address;
+static struct device *sdi_12_gpio_dev;
+static gpio_pin_t sdi_12_tx_enable_pin;
+
+struct k_timer break_needed_timer;
+struct k_timer retry_timer;
+struct k_timer sensor_wakeup_deadline_timer;
+
+bool break_needed;
+bool keep_retrying;
+bool sensor_wakeup_deadline;
+
 static char sdi_12_cmd_char[SDI_12_CMD_TYPE_MAX] = {
 		SDI_12_NULL_PARAM,	// SDI_12_CMD_ACK_ACTIVE
 		'I',			// SDI_12_CMD_SEND_ID
@@ -98,10 +110,14 @@ static SDI_12_PAYLOAD_TYPE_e sdi_12_resp_param[SDI_12_CMD_TYPE_MAX] = \
 		SDI_12_MEAS_PAYLD,	// SDI_12_CMD_ADDIT_CONCUR_MEAS_CRC
 		SDI_12_VAL_PAYLD,	// SDI_12_CMD_CONT_MEAS
 		SDI_12_VAL_PAYLD	// SDI_12_CMD_CONT_MEAS_CRC
-	};
+};
+
 
 int8_t sdi_12_cmd_n_resp(struct device *uart_dev, SDI_12_CMD_TYPE_e cmd_type,
             char address, char param_cmd, void* param_resp);
+
+static int8_t sdi_12_tx_rx_inner_retries(struct device *uart_dev, char *buffer,
+				       int buffer_len);
 
 int8_t sdi_12_parse_response(char *resp, char resp_len,
 			SDI_12_CMD_TYPE_e cmd_type, char *address, void* data);
@@ -111,10 +127,51 @@ int8_t sdi_12_prep_command(char *cmd, char address,
 
 void sdi_12_calc_crc_ascii(char *cmd, uint8_t cmd_len, char *crc);
 
-int8_t sdi_12_init(struct device *uart_dev)
-{
-	return sdi_12_uart_init(uart_dev);
+void break_needed_timer_clbk(struct k_timer* timer_id);
 
+void retry_timer_clbk(struct k_timer* timer_id);
+
+void sensor_wakeup_deadline_timer_clbk(struct k_timer* timer_id);
+
+K_TIMER_DEFINE(break_needed_timer,
+	       break_needed_timer_clbk, NULL);
+K_TIMER_DEFINE(retry_timer,
+	       retry_timer_clbk, NULL);
+K_TIMER_DEFINE(sensor_wakeup_deadline_timer,
+	       sensor_wakeup_deadline_timer_clbk, NULL);
+
+void break_needed_timer_clbk(struct k_timer* timer_id)
+{
+	break_needed = true;
+}
+
+void retry_timer_clbk(struct k_timer* timer_id)
+{
+	keep_retrying = false;
+}
+
+void sensor_wakeup_deadline_timer_clbk(struct k_timer* timer_id)
+{
+	sensor_wakeup_deadline = true;
+}
+
+int8_t sdi_12_init(struct device *uart_dev, struct device *gpio_dev,
+			gpio_pin_t tx_enable_pin)
+{
+	int ret;
+	sdi_12_gpio_dev = gpio_dev;
+	sdi_12_tx_enable_pin = tx_enable_pin;
+
+	break_needed = true;
+
+	ret = gpio_pin_configure(sdi_12_gpio_dev, sdi_12_tx_enable_pin,
+			   	GPIO_OUTPUT_LOW);
+	if (ret != 0) {
+		LOG_ERR("Error configuring tx_enable_pin");
+		return ret;
+	}
+
+	return sdi_12_uart_init(uart_dev);
 }
 
 int8_t sdi_12_ack_active(struct device *uart_dev, char address)
@@ -191,12 +248,14 @@ int8_t sdi_12_get_measurements(struct device *uart_dev, char address,
 	int idx;
 	int data_read;
 	int data_portion;
+	char address_tmp;
+	char srv_req_buff[4]; 
 	struct sdi_12_meas_resp measurement_info;
 	struct sdi_12_value_resp resp_values;;
 	SDI_12_CMD_TYPE_e meas_cmd;
 
 #if LOG_LEVEL >= LOG_LEVEL_DBG
-	char log_buffer[50] = {'\0'};
+	char log_buffer[75] = {'\0'};
 #else
 	char *log_buffer;
 #endif
@@ -222,7 +281,27 @@ int8_t sdi_12_get_measurements(struct device *uart_dev, char address,
 	LOG_DBG("Waiting %ds for %d measurements",
 			measurement_info.ready_in_sec,
 			measurement_info.meas_no);
-	k_sleep(measurement_info.ready_in_sec * 1000);
+
+	/* Mind data Rx pipe in case a service request arrives */
+	ret = sdi_12_uart_rx(uart_dev, srv_req_buff, 4, SDI_12_TERM_STR,
+				measurement_info.ready_in_sec*1000,
+				measurement_info.ready_in_sec*1000);
+
+	if ( ret == SDI_12_STATUS_OK ) {
+		ret = sdi_12_parse_response(srv_req_buff, 4, 
+				SDI_12_CMD_ACK_ACTIVE, &address_tmp, NULL);
+		if (ret == SDI_12_STATUS_OK && address_tmp == address) {
+			LOG_DBG("Service req - data available");
+		} else {
+			LOG_DBG("Service req wait error");
+			return SDI_12_STATUS_ERROR;
+		}
+
+	}
+	if ( ret != SDI_12_STATUS_OK && ret != SDI_12_STATUS_TIMEOUT ) {
+		LOG_DBG("Service req wait error %s", SDI_12_ERR_TO_STR(ret));
+		return ret;
+	}
 
 
 	data_read = 0;
@@ -238,21 +317,24 @@ int8_t sdi_12_get_measurements(struct device *uart_dev, char address,
 		log_buffer[0] = '\0';
 #endif		
 		for (idx = 0; idx < resp_values.len; idx++) {
+
 			if ( data_read+1 > len ) {
 				LOG_ERR("Too many measurements returned");
 				return SDI_12_STATUS_BUFFER_FULL;
 			}
 			data_out[data_read++] = resp_values.values[idx];
+
 #if LOG_LEVEL >= LOG_LEVEL_DBG
 				sprintf(log_buffer+strlen(log_buffer),
 					"%d.%-2d ",
 					(int)resp_values.values[idx],
 					(int)fabs((resp_values.values[idx] - \
-					(int)(resp_values.values[idx]))*100));
+					(int)(resp_values.values[idx]))*10e2));
 #endif
 		}
 		data_portion++;
-		LOG_DBG("Got measurements: %s", log_strdup(log_buffer));
+		LOG_DBG("Got %d measurements: %s", resp_values.len,
+			log_strdup(log_buffer));
 	}
 
 	return SDI_12_STATUS_OK;
@@ -263,6 +345,7 @@ int8_t sdi_12_cmd_n_resp(struct device *uart_dev, SDI_12_CMD_TYPE_e cmd_type,
 {
 	int ret;
 	char resp_address;
+	int retry_count;
 	char buffer[BUFFER_LEN] = {'\0'};
 
 	ret = sdi_12_prep_command(buffer, address, cmd_type, param_cmd);
@@ -271,45 +354,150 @@ int8_t sdi_12_cmd_n_resp(struct device *uart_dev, SDI_12_CMD_TYPE_e cmd_type,
 		return ret;
 	}
 
-	ret = sdi_12_uart_tx(uart_dev, buffer, strlen(buffer));
-	if ( ret != SDI_12_STATUS_OK ) {
-		LOG_DBG("TX error");
-		return ret;
+	for ( retry_count = 0;
+		retry_count < SDI_12_OUTER_TRY_MIN;
+		retry_count++ ) {
+		if ( break_needed || address != last_address) {
+			ret = sdi_12_uart_send_break(uart_dev);
+			if ( ret != SDI_12_STATUS_OK ) {
+				LOG_DBG("Breaking error");
+				return ret;
+			}
+			last_address = address;
+			break_needed = false;
+		}
+
+		/* Min 8.3ms of marking space is expected before an address. */ 
+		k_sleep(K_MSEC(SDI_12_MARKING_MS));
+
+		ret = sdi_12_tx_rx_inner_retries(uart_dev, buffer, BUFFER_LEN);
+		if ( ret != SDI_12_STATUS_OK ) {
+			LOG_DBG("Inner retry fail. Resend break");
+		} else {
+			break;
+		}
 	}
 
-	memset(buffer, '\0', BUFFER_LEN);
+	if ( ret == SDI_12_STATUS_OK ) {
 
-	ret = sdi_12_uart_rx(uart_dev, buffer, BUFFER_LEN, SDI_12_TERM_STR,
-				SDI_12_RESP_TIMEOUT);
-	if ( ret != SDI_12_STATUS_OK ) {
-		LOG_DBG("Response RX error: %s", SDI_12_ERR_TO_STR(ret));
-		return ret;
+		ret = sdi_12_parse_response(buffer, strlen(buffer),
+					cmd_type, &resp_address, param_resp);
+
+		if (cmd_type == SDI_12_CMD_CHNG_ADDR ||
+			cmd_type == SDI_12_CMD_ADDR_QUERY) {
+			*(char*)(param_resp) = resp_address;
+		}
+
+		if ( ret != SDI_12_STATUS_ADDR_INVALID &&
+			cmd_type != SDI_12_CMD_ADDR_QUERY &&
+			((cmd_type != SDI_12_CMD_CHNG_ADDR &&
+				resp_address != address) ||
+			(cmd_type == SDI_12_CMD_CHNG_ADDR &&
+				resp_address != param_cmd))) {
+			LOG_DBG("Cmd-resp address mismatch");
+			ret = SDI_12_STATUS_ADDR_MISMATCH;
+		}
+		else if ( ret != SDI_12_STATUS_OK ) {
+			LOG_DBG("Error parsing response");
+		} else {
+			ret = SDI_12_STATUS_OK;
+		}
 	}
 
-	ret = sdi_12_parse_response(buffer, strlen(buffer),
-				cmd_type, &resp_address, param_resp);
+	break_needed = true;
 
-	if (cmd_type == SDI_12_CMD_CHNG_ADDR ||
-		cmd_type == SDI_12_CMD_ADDR_QUERY) {
-		*(char*)(param_resp) = resp_address;
+	k_timer_stop(&retry_timer);
+	k_timer_stop(&break_needed_timer);
+
+	return ret;
+
+
+}
+
+static int8_t sdi_12_tx_rx_inner_retries(struct device *uart_dev, char *buffer,
+				       int buffer_len)
+{
+	int ret = SDI_12_STATUS_ERROR;
+	int retry_count = 0;
+	char *tx_buffer = malloc( sizeof(char) * (strlen(buffer) + 1) );
+	memcpy(tx_buffer, buffer, (strlen(buffer) + 1));
+
+	keep_retrying = true;
+	k_timer_start(&retry_timer, K_MSEC(SDI_12_RETRY_TIMEOUT_MS),
+			K_MSEC(SDI_12_RETRY_TIMEOUT_MS));
+
+	while ( retry_count < SDI_12_INNER_TRY_MIN || keep_retrying ) {
+		if (retry_count > 0) {
+			LOG_DBG("Retrying...");
+		}
+
+		ret = gpio_pin_set_raw(sdi_12_gpio_dev,
+					sdi_12_tx_enable_pin, 1);
+		if (ret != 0) {
+			LOG_ERR("Couldn't enable HW tx buffer");
+			return ret;
+		}
+
+		ret = sdi_12_uart_tx(uart_dev, tx_buffer, strlen(tx_buffer));
+		if ( ret != SDI_12_STATUS_OK ) {
+			LOG_DBG("TX error");
+			return ret;
+		}
+
+		ret = gpio_pin_set_raw(sdi_12_gpio_dev,
+					sdi_12_tx_enable_pin, 0);
+		if (ret != 0) {
+			LOG_ERR("Couldn't disable HW tx buffer");
+			return ret;
+		}
+
+		/* If nothing takes place on the line for the following
+		 * SDI_12_BREAK_NEEDED_TIME_MS the break will have to be
+		 * sent again */
+		k_timer_start(&break_needed_timer,
+			      K_MSEC(SDI_12_BREAK_NEEDED_TIME_MS),
+			      K_MSEC(SDI_12_BREAK_NEEDED_TIME_MS));
+
+		memset(buffer, '\0', buffer_len);
+
+		retry_count++;
+		/* The first response will receive the transmission as currently
+		 * half-duplex operation is achieved by tying TX and RX lines.
+		 * This needs to be ignored.
+		 * In the future this can be handled by explicitly disabling RX.
+		 */
+		LOG_DBG("Outgoing TX echo");
+		ret = sdi_12_uart_rx(uart_dev, buffer, buffer_len,
+					SDI_12_TERM_STR,
+					SDI_12_RESP_START_TIMEOUT_MS,
+					SDI_12_RESP_END_TIMEOUT_MS);
+		if ( ret != SDI_12_STATUS_OK ) {
+			LOG_DBG("Response RX error: %s",
+				SDI_12_ERR_TO_STR(ret));
+			k_sleep(K_MSEC(SDI_12_RESP_RETRY_DELAY_MS));
+			continue;
+		}
+
+		memset(buffer, '\0', buffer_len);
+
+		LOG_DBG("RX proper");
+		ret = sdi_12_uart_rx(uart_dev, buffer, buffer_len,
+					SDI_12_TERM_STR,
+					SDI_12_RESP_START_TIMEOUT_MS,
+					SDI_12_RESP_END_TIMEOUT_MS);
+		if ( ret != SDI_12_STATUS_OK ) {
+			LOG_DBG("Response RX error: %s",
+				SDI_12_ERR_TO_STR(ret));
+			k_sleep(K_MSEC(SDI_12_RESP_RETRY_DELAY_MS));
+			continue;
+		} else {
+			free(tx_buffer);
+			return SDI_12_STATUS_OK;
+		}
 	}
 
-	if ( ret != SDI_12_STATUS_ADDR_INVALID &&
-		cmd_type != SDI_12_CMD_ADDR_QUERY &&
-		((cmd_type != SDI_12_CMD_CHNG_ADDR &&
-			resp_address != address) ||
-		(cmd_type == SDI_12_CMD_CHNG_ADDR &&
-			resp_address != param_cmd))) {
-		LOG_DBG("Cmd-resp address mismatch");
-		return SDI_12_STATUS_ADDR_MISMATCH;
-	}
-	else if ( ret != SDI_12_STATUS_OK ) {
-		LOG_DBG("Error parsing response");
-		return ret;
-	}
-
-
-	return SDI_12_STATUS_OK;
+	free(tx_buffer);
+	return ret;
 }
 
 int8_t sdi_12_parse_response(char *resp, char resp_len, 
@@ -317,7 +505,6 @@ int8_t sdi_12_parse_response(char *resp, char resp_len,
 				char *address, void* data)
 {
 	int idx;
-	int val_strt_idx;
 	int resp_idx = 0;
 	int pld_end_idx = 0;
 	char buff[10];
@@ -410,7 +597,7 @@ int8_t sdi_12_parse_response(char *resp, char resp_len,
 		break;
 	case SDI_12_ADDR_PAYLD:
 		if ( pld_end_idx-resp_idx != 1 ||
-			isalnum((int)*address) != 0 ) {
+			isalnum((unsigned char)*address) != 0 ) {
 			LOG_WRN("Unexpected payload");
 			return SDI_12_STATUS_ERROR;
 		}
@@ -419,12 +606,12 @@ int8_t sdi_12_parse_response(char *resp, char resp_len,
 	case SDI_12_MEAS_PAYLD:
 		if ( (pld_end_idx-resp_idx) < 4 ||
 		     (pld_end_idx-resp_idx) > 5 ) {
-			LOG_WRN("Unexpected payload lenght");
+			LOG_WRN("Unexpected payload length");
 			return SDI_12_STATUS_ERROR;
 		}
 
 		for (idx=resp_idx; idx<pld_end_idx; idx++) {
-			if ( isdigit(resp[idx]) == 0) {
+			if ( isdigit((unsigned char)resp[idx]) == 0) {
 				LOG_WRN("Unexpected payload format");
 				return SDI_12_STATUS_ERROR;
 			}
@@ -441,13 +628,15 @@ int8_t sdi_12_parse_response(char *resp, char resp_len,
 
 		break;
 	case SDI_12_VAL_PAYLD:
-		if ( (pld_end_idx-resp_idx) < 2 ||
+		if ( (pld_end_idx-resp_idx) < 0 ||
 		     (pld_end_idx-resp_idx) > 75 ) {
-			LOG_WRN("Unexpected payload lenght");
+			LOG_WRN("Unexpected payload length");
 			return SDI_12_STATUS_ERROR;
+		} else if ( pld_end_idx == resp_idx ) {
+			LOG_WRN("No values attached.");
+			data_elems_s->len = 0;
+			break;
 		}
-
-		val_strt_idx = -1;
 
 		if ( resp[resp_idx] != '+' && resp[resp_idx] != '-' ) {
 			LOG_WRN("Unexpected payload format (missing polarity)");
@@ -457,7 +646,6 @@ int8_t sdi_12_parse_response(char *resp, char resp_len,
 		data_elems_s->len = 0;
 
 		tmp_char_ptr = &(resp[resp_idx]);
-
 
 		while ( *tmp_char_ptr == '+' || *tmp_char_ptr == '-' ) {
 			data_elems_s->values[data_elems_s->len] = \
@@ -492,7 +680,7 @@ int8_t sdi_12_parse_response(char *resp, char resp_len,
 		break;
 	case SDI_12_FREEFORM_PAYLD:
 		/* This payload type is used for when no particular response
-		format is specified. Just return succesfully. */
+		format is specified. Just return successfully. */
 		return 0;
 	default:
 		LOG_ERR("Unexpected command type");

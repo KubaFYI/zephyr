@@ -72,8 +72,16 @@ typedef enum {
 #define SDI_12_MAX_VALS_IN_RESP (SDI_12_RESP_VALUES_MAX_CHARS / 4)
 #define SDI_12_RESP_MAX_READS_IN_GROUP (SDI_12_RESP_VALUES_MAX_CHARS/2)
 #define SDI_12_TERM_STR "\x0d\x0a"
-#define SDI_12_RESP_TIMEOUT 10000
 #define SDI_12_NULL_PARAM '\0'
+
+#define SDI_12_MARKING_MS 9
+#define SDI_12_BREAK_NEEDED_TIME_MS 87
+#define SDI_12_RESP_START_TIMEOUT_MS (17+9)
+#define SDI_12_RESP_RETRY_DELAY_MS (17+10)
+#define SDI_12_RESP_END_TIMEOUT_MS 780
+#define SDI_12_RETRY_TIMEOUT_MS 100
+#define SDI_12_INNER_TRY_MIN 3
+#define SDI_12_OUTER_TRY_MIN 3
 
 
 int8_t sdi_12_rx(struct device *uart_dev, uint8_t *buffer, unsigned int len,
@@ -135,7 +143,8 @@ struct sdi_12_value_resp {
  * @return SDI_12_STATUS_OK if succeeded or SDI_12_STATUS_CONFIG_ERROR
  * status otheriwse. 
  */
-int8_t sdi_12_init(struct device *uart_dev);
+int8_t sdi_12_init(struct device *uart_dev, struct device *gpio_dev,
+			gpio_pin_t tx_enable_pin);
 
 /**
  * @brief Function used to estabilish whether an SDI-12 device is active. 
