@@ -9,6 +9,10 @@
 #include <net/lorawan.h>
 #include <zephyr.h>
 
+#if CONFIG_LORAWAN_RX_RING_BUFFER_MAX_SIZE_WORDS != 0
+#include <sys/ring_buffer.h>
+#endif // CONFIG_LORAWAN_RX_RING_BUFFER_MAX_SIZE_WORDS != 0
+
 #include <LoRaMac.h>
 
 #ifdef CONFIG_LORAMAC_REGION_AS923
@@ -35,6 +39,12 @@
 	#error "Atleast one LoRaWAN region should be selected"
 #endif
 
+#define CEIL_32(x) ((unsigned int)(((((x))+31U)/32U)*32U))
+
+#define LORAWAN_PLD_MAX_SIZE		242U
+#define LORAWAN_PLD_MAX_SIZE_CEIL_32_B	CEIL_32(LORAWAN_PLD_MAX_SIZE)
+#define LORAWAN_PLD_MAX_SIZE_CEIL_32	(LORAWAN_PLD_MAX_SIZE_CEIL_32_B/4)
+
 #define LOG_LEVEL CONFIG_LORAWAN_LOG_LEVEL
 #include <logging/log.h>
 LOG_MODULE_REGISTER(lorawan);
@@ -44,6 +54,29 @@ K_SEM_DEFINE(mcps_confirm_sem, 0, 1);
 
 K_MUTEX_DEFINE(lorawan_join_mutex);
 K_MUTEX_DEFINE(lorawan_send_mutex);
+
+#if CONFIG_LORAWAN_RX_RING_BUFFER_MAX_SIZE_WORDS != 0
+
+#define RX_RING_BUF_SIZE_WORDS (CONFIG_LORAWAN_RX_BUFFER_MAX_SIZE_WORDS)
+struct rx_ring_buf {
+    struct ring_buf rb;
+    u32_t buffer[RX_RING_BUF_SIZE_WORDS];
+};
+
+struct rx_ring_buf rx_buf;
+
+#else
+
+uint8_t rx_buffer[LORAWAN_PLD_MAX_SIZE];
+uint8_t rx_buffer_stored_len;
+uint8_t rx_buffer_port;
+
+#endif // CONFIG_LORAWAN_RX_RING_BUFFER_MAX_SIZE_WORDS != 0
+
+static uint16_t rx_buf_avail_elem;
+static uint16_t rx_buf_discarded_elem;
+static uint32_t payload_tmp[LORAWAN_PLD_MAX_SIZE_CEIL_32];
+static uint8_t payload_tmp_size = LORAWAN_PLD_MAX_SIZE_CEIL_32;
 
 const char *status2str(int status)
 {
@@ -204,6 +237,132 @@ static LoRaMacEventInfoStatus_t last_mlme_confirm_status;
 static LoRaMacEventInfoStatus_t last_mcps_indication_status;
 static LoRaMacEventInfoStatus_t last_mlme_indication_status;
 
+/**
+ * @brief Read a downlink message from the ring buffer.
+ *
+ * Read a downlink message from the ring buffer and place its payload in the
+ * provided container. The message is consumed in the process. If the container
+ * is shorter than the available payload any excess data will be discarded and
+ * only as much of the payload as possible will be output.
+ *
+ * @param port Container for the message's port
+ * @param payload Container for the message's payload
+ * @param len Lenght in bytes of the \p payload container.
+ *
+ * @retval non-negative integer indicating the number of read payload bytes
+ *         successfully copied to the provided container
+ * @retval -EAGAIN No messages in the buffer.
+ */
+static int rx_buf_get(u8_t *port, u8_t *payload, u16_t len)
+{
+	int len_to_copy;
+
+#if CONFIG_LORAWAN_RX_RING_BUFFER_MAX_SIZE_WORDS != 0
+	int ret;
+	u16_t rx_buffer_stored_len;
+
+	payload_tmp_size = LORAWAN_PLD_MAX_SIZE_CEIL_32;
+	ret = ring_buf_item_get(&rx_buf.rb, &rx_buffer_stored_len,
+				port, payload_tmp, &payload_tmp_size);
+	payload_tmp_size = LORAWAN_PLD_MAX_SIZE_CEIL_32;
+
+	if ( ret < 0 ) {
+		return ret;
+	}
+
+	rx_buf_avail_elem--;
+	len_to_copy = rx_buffer_stored_len < len ? rx_buffer_stored_len : len;
+	memcpy(payload, payload_tmp, len_to_copy);
+#else
+	len_to_copy = rx_buffer_stored_len < len ? rx_buffer_stored_len : len;
+	rx_buf_avail_elem = 0;
+	*port = rx_buffer_port; 
+	rx_buffer_port = 0;
+	memcpy(payload, rx_buffer, len_to_copy);
+#endif
+	return len_to_copy;
+}
+
+/**
+ * @brief Put a downlink message into the ring buffer.
+ *
+ * Put a downlink message intothe ring buffer. If the buffer doesn not have
+ * sufficient free space oldest messages will be discarded for as long as
+ * possible until sufficient space is available.
+ *
+ * @param port Message's port number
+ * @param payload Container for the message's payload
+ * @param len \p payload size in bytes.
+ *
+ * @retval 0 On success
+ * @retval -EMSGSIZE Message too large for the buffer
+*/
+static int rx_buf_put(u8_t port, u8_t *payload, u16_t len)
+{
+	int ret;
+
+#if CONFIG_LORAWAN_RX_RING_BUFFER_MAX_SIZE_WORDS != 0
+	memcpy(payload_tmp, payload, len);
+
+	ret = ring_buf_item_put(&rx_buf.rb, len, port, payload_tmp,
+				CEIL_32(len)/4);
+	while (ret == -EMSGSIZE) {
+		/* not enough room for the data item -> remove the oldes one */
+		payload_tmp_size = LORAWAN_PLD_MAX_SIZE_CEIL_32;
+		ret = ring_buf_item_get(&rx_buf.rb, NULL, NULL, payload_tmp,
+					&payload_tmp_size);
+		payload_tmp_size = LORAWAN_PLD_MAX_SIZE_CEIL_32;
+		if (ret == -EAGAIN) {
+			/* Buffer doesn't have any items -> the one we are
+			 * trying to add won't fit any way. */
+			return -EMSGSIZE;
+		}
+		rx_buf_discarded_elem++;
+
+		memcpy(payload_tmp, payload, len);
+
+		ret = ring_buf_item_put(&rx_buf.rb, len, port, payload_tmp,
+					CEIL_32(len)/4);
+	}
+
+	rx_buf_avail_elem++;
+#else
+	memcpy(rx_buffer, payload, len);
+	rx_buf_avail_elem = 1;
+	rx_buffer_port = port;
+	rx_buffer_stored_len = len;
+#endif
+
+	return 0;
+}
+
+/**
+ * @brief Return the number of downlink messages available.
+ *
+ * Return the number of downlink messages available in the buffer
+ *
+ * @retval number of downlink messages available in the buffer
+ */
+static int rx_buf_avail()
+{
+	return rx_buf_avail_elem;
+}
+
+/**
+ * @brief Return the number of discarded downlink messages since last call.
+ *
+ * Returns the number of discarded downlink messages since this funcion has been
+ * called last.
+ *
+ * @retval number of discarded characters
+ */
+static int rx_buf_discarded()
+{
+	int retval = rx_buf_discarded_elem;
+	rx_buf_discarded_elem = 0;
+	return retval;
+}
+
 static void OnMacProcessNotify(void)
 {
 	LoRaMacProcess();
@@ -237,15 +396,28 @@ static void McpsIndication(McpsIndication_t *mcpsIndication)
 
 	/* TODO: Check MCPS Indication type */
 	if (mcpsIndication->RxData == true) {
+		LOG_DBG("RxData set");
 		if (mcpsIndication->BufferSize != 0) {
-			LOG_DBG("Rx Data: %s",
+			LOG_DBG("Rx %dB Data: %s",
+				mcpsIndication->BufferSize,
 				log_strdup(mcpsIndication->Buffer));
+
+			rx_buf_put(mcpsIndication->Port, mcpsIndication->Buffer,
+				   mcpsIndication->BufferSize);
 		}
 	}
 
 	last_mcps_indication_status = mcpsIndication->Status;
 
 	/* TODO: Compliance test based on FPort value*/
+    LOG_DBG("Multicast: %d (0x%x)", mcpsIndication->Multicast, mcpsIndication->Multicast);
+    LOG_DBG("Port: %d (0x%x)", mcpsIndication->Port, mcpsIndication->Port);
+    LOG_DBG("FramePending: %d (0x%x)", mcpsIndication->FramePending, mcpsIndication->FramePending);
+    LOG_DBG("RxData: %d (0x%x)", mcpsIndication->RxData, mcpsIndication->RxData);
+    LOG_DBG("Rssi: %d (0x%x)", mcpsIndication->Rssi, mcpsIndication->Rssi);
+    LOG_DBG("Snr: %d (0x%x)", mcpsIndication->Snr, mcpsIndication->Snr);
+    LOG_DBG("AckReceived: %d (0x%x)", mcpsIndication->AckReceived, mcpsIndication->AckReceived);
+    LOG_DBG("DeviceTimeAnsReceived: %d (0x%x)", mcpsIndication->DeviceTimeAnsReceived, mcpsIndication->DeviceTimeAnsReceived);
 }
 
 static void MlmeConfirm(MlmeConfirm_t *mlmeConfirm)
@@ -452,9 +624,23 @@ out:
 	return ret;
 }
 
+int lorawan_receive_available()
+{
+	return rx_buf_avail();
+}
+
+int lorawan_receive_read(u8_t *port, u8_t *data, u8_t len)
+{
+	return rx_buf_get(port, data, len);
+}
+
 static int lorawan_init(struct device *dev)
 {
 	LoRaMacStatus_t status;
+
+	uint8_t test[] = {0xaa, 0x55, 0x11};
+	uint32_t test32;
+	memcpy(&test32, test, sizeof(uint32_t));
 
 	macPrimitives.MacMcpsConfirm = McpsConfirm;
 	macPrimitives.MacMcpsIndication = McpsIndication;
@@ -472,6 +658,14 @@ static int lorawan_init(struct device *dev)
 			log_strdup(status2str(status)));
 		return -EINVAL;
 	}
+
+
+#if CONFIG_LORAWAN_RX_RING_BUFFER_MAX_SIZE_WORDS != 0
+	ring_buf_init(&rx_buf.rb, sizeof(rx_buf.buffer), rx_buf.buffer);
+#endif
+
+	rx_buf_avail_elem = 0;
+	rx_buf_discarded_elem = 0;
 
 	LoRaMacStart();
 

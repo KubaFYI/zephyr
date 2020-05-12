@@ -28,6 +28,7 @@ BUILD_ASSERT(DT_HAS_NODE_STATUS_OKAY(DEFAULT_RADIO_NODE),
 #define LORAWAN_DEFAULT_DATARATE	LORAWAN_DR_0
 
 #define DELAY K_MSEC(5000)
+#define DL_MSG_LEN 256
 
 #define LOG_LEVEL CONFIG_LOG_DEFAULT_LEVEL
 #include <logging/log.h>
@@ -39,11 +40,15 @@ void main(void)
 {
 	struct device *lora_dev;
 	struct lorawan_mib_config mib_config;
+	int ret;
+	int dl_msgs_no;
+	int i;
+	uint8_t port;
+	uint8_t dl_msg[DL_MSG_LEN] = {'\0'};
 	u8_t dev_eui[] = LORAWAN_DEV_EUI;
 	u8_t join_eui[] = LORAWAN_JOIN_EUI;
 	u8_t app_eui[] = LORAWAN_APP_EUI;
 	u8_t app_key[] = LORAWAN_APP_KEY;
-	int ret;
 
 	lora_dev = device_get_binding(DEFAULT_RADIO);
 	if (!lora_dev) {
@@ -75,11 +80,11 @@ void main(void)
 		return;
 	}
 
-	LOG_INF("Sending data...");
 	while (1) {
+		k_sleep(DELAY);
+		LOG_INF("Sending data...");
 		ret = lorawan_send(2, LORAWAN_DEFAULT_DATARATE, data,
 				   sizeof(data), true, 1);
-
 		/*
 		 * Note: The stack may return -EAGAIN if the provided data
 		 * length exceeds the maximum possible one for the region and
@@ -87,17 +92,30 @@ void main(void)
 		 * we'll just continue.
 		 */
 		if (ret == -EAGAIN) {
-			LOG_ERR("lorawan_send failed: %d. Continuing...", ret);
-			k_sleep(DELAY);
+			LOG_ERR("lorawan_send failed: %d. Retrying...", ret);
 			continue;
 		}
 
 		if (ret < 0) {
-			LOG_ERR("lorawan_send failed: %d", ret);
-			return;
+			LOG_ERR("lorawan_send failed: %d. Retrying...", ret);
+			continue;
 		}
 
 		LOG_INF("Data sent!");
-		k_sleep(DELAY);
+		k_sleep(1000);
+
+		dl_msgs_no = lorawan_receive_available();
+		if (dl_msgs_no > 0) {
+			LOG_INF("%d downlink msgs available", dl_msgs_no);
+			for (i=0; i<dl_msgs_no; i++){
+				ret = lorawan_receive_read(&port, dl_msg, DL_MSG_LEN-1);
+				if ( ret >= 0 ) {
+					LOG_INF("Msg at port %d of length %d: %s",
+						port,
+						ret,
+						log_strdup(dl_msg));
+				}
+			}
+		}
 	}
 }
