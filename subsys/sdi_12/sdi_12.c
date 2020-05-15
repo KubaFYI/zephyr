@@ -165,7 +165,7 @@ int8_t sdi_12_init(struct device *uart_dev, struct device *gpio_dev,
 	break_needed = true;
 
 	ret = gpio_pin_configure(sdi_12_gpio_dev, sdi_12_tx_enable_pin,
-			   	GPIO_OUTPUT_LOW);
+				 TX_ENABLE_SETTING);
 	if (ret != 0) {
 		LOG_ERR("Error configuring tx_enable_pin");
 		return ret;
@@ -282,20 +282,22 @@ int8_t sdi_12_get_measurements(struct device *uart_dev, char address,
 			measurement_info.ready_in_sec,
 			measurement_info.meas_no);
 
-	/* Mind data Rx pipe in case a service request arrives */
-	ret = sdi_12_uart_rx(uart_dev, srv_req_buff, 4, SDI_12_TERM_STR,
+	if ( measurement_info.ready_in_sec > 0 ) {
+		/* Mind data Rx pipe in case a service request arrives */
+		ret = sdi_12_uart_rx(uart_dev, srv_req_buff, 4,
 				measurement_info.ready_in_sec*1000,
 				measurement_info.ready_in_sec*1000);
-
-	if ( ret == SDI_12_STATUS_OK ) {
-		ret = sdi_12_parse_response(srv_req_buff, 4, 
+		if ( ret == SDI_12_STATUS_OK ) {
+			ret = sdi_12_parse_response(srv_req_buff, 4, 
 				SDI_12_CMD_ACK_ACTIVE, &address_tmp, NULL);
-		if (ret == SDI_12_STATUS_OK && address_tmp == address) {
-			LOG_DBG("Service req - data available");
-		} else {
-			LOG_DBG("Service req wait error");
-			return SDI_12_STATUS_ERROR;
-		}
+			if (ret == SDI_12_STATUS_OK && address_tmp == address) {
+				LOG_DBG("Service req - data available");
+			} else {
+				LOG_DBG("Service req wait error");
+				return SDI_12_STATUS_ERROR;
+			}
+	}
+
 
 	}
 	if ( ret != SDI_12_STATUS_OK && ret != SDI_12_STATUS_TIMEOUT ) {
@@ -348,16 +350,24 @@ int8_t sdi_12_cmd_n_resp(struct device *uart_dev, SDI_12_CMD_TYPE_e cmd_type,
 	int retry_count;
 	char buffer[BUFFER_LEN] = {'\0'};
 
-	ret = sdi_12_prep_command(buffer, address, cmd_type, param_cmd);
-	if ( ret != SDI_12_STATUS_OK ) {
-		LOG_DBG("Error preparing command");
-		return ret;
-	}
 
 	for ( retry_count = 0;
 		retry_count < SDI_12_OUTER_TRY_MIN;
 		retry_count++ ) {
+
+		ret = sdi_12_prep_command(buffer, address, cmd_type, param_cmd);
+		if ( ret != SDI_12_STATUS_OK ) {
+			LOG_DBG("Error preparing command");
+			return ret;
+		}
+
 		if ( break_needed || address != last_address) {
+			ret = gpio_pin_set_raw(sdi_12_gpio_dev,
+						sdi_12_tx_enable_pin, TX_ENABLE_ON);
+			if (ret != 0) {
+				LOG_ERR("Couldn't enable HW tx buffer");
+				return ret;
+			}
 			ret = sdi_12_uart_send_break(uart_dev);
 			if ( ret != SDI_12_STATUS_OK ) {
 				LOG_DBG("Breaking error");
@@ -432,22 +442,26 @@ static int8_t sdi_12_tx_rx_inner_retries(struct device *uart_dev, char *buffer,
 		}
 
 		ret = gpio_pin_set_raw(sdi_12_gpio_dev,
-					sdi_12_tx_enable_pin, 1);
+					sdi_12_tx_enable_pin, 
+					TX_ENABLE_ON);
 		if (ret != 0) {
 			LOG_ERR("Couldn't enable HW tx buffer");
+			free(tx_buffer);
 			return ret;
 		}
 
 		ret = sdi_12_uart_tx(uart_dev, tx_buffer, strlen(tx_buffer));
 		if ( ret != SDI_12_STATUS_OK ) {
 			LOG_DBG("TX error");
+			free(tx_buffer);
 			return ret;
 		}
 
 		ret = gpio_pin_set_raw(sdi_12_gpio_dev,
-					sdi_12_tx_enable_pin, 0);
+					sdi_12_tx_enable_pin, TX_ENABLE_OFF);
 		if (ret != 0) {
 			LOG_ERR("Couldn't disable HW tx buffer");
+			free(tx_buffer);
 			return ret;
 		}
 
@@ -461,28 +475,11 @@ static int8_t sdi_12_tx_rx_inner_retries(struct device *uart_dev, char *buffer,
 		memset(buffer, '\0', buffer_len);
 
 		retry_count++;
-		/* The first response will receive the transmission as currently
-		 * half-duplex operation is achieved by tying TX and RX lines.
-		 * This needs to be ignored.
-		 * In the future this can be handled by explicitly disabling RX.
-		 */
-		LOG_DBG("Outgoing TX echo");
-		ret = sdi_12_uart_rx(uart_dev, buffer, buffer_len,
-					SDI_12_TERM_STR,
-					SDI_12_RESP_START_TIMEOUT_MS,
-					SDI_12_RESP_END_TIMEOUT_MS);
-		if ( ret != SDI_12_STATUS_OK ) {
-			LOG_DBG("Response RX error: %s",
-				SDI_12_ERR_TO_STR(ret));
-			k_sleep(K_MSEC(SDI_12_RESP_RETRY_DELAY_MS));
-			continue;
-		}
 
 		memset(buffer, '\0', buffer_len);
 
 		LOG_DBG("RX proper");
 		ret = sdi_12_uart_rx(uart_dev, buffer, buffer_len,
-					SDI_12_TERM_STR,
 					SDI_12_RESP_START_TIMEOUT_MS,
 					SDI_12_RESP_END_TIMEOUT_MS);
 		if ( ret != SDI_12_STATUS_OK ) {
@@ -739,8 +736,8 @@ int8_t sdi_12_prep_command(char *cmd, char address,
 	}
 
 	cmd[cmd_idx++] = '!';
-	cmd[cmd_idx++] = '\x0d';
-	cmd[cmd_idx++] = '\x0a';
+	cmd[cmd_idx++] = SDI_12_TERM[0];
+	cmd[cmd_idx++] = SDI_12_TERM[1];
 	cmd[cmd_idx] = '\0';
 
 	return SDI_12_STATUS_OK;

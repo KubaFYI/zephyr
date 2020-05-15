@@ -71,7 +71,8 @@ typedef enum {
 #define SDI_12_RESP_VALUES_MAX_CHARS 75
 #define SDI_12_MAX_VALS_IN_RESP (SDI_12_RESP_VALUES_MAX_CHARS / 4)
 #define SDI_12_RESP_MAX_READS_IN_GROUP (SDI_12_RESP_VALUES_MAX_CHARS/2)
-#define SDI_12_TERM_STR "\x0d\x0a"
+#define SDI_12_TERM "\x0d\x0a"
+#define SDI_12_TERM_LEN 2
 #define SDI_12_NULL_PARAM '\0'
 
 #define SDI_12_MARKING_MS 9
@@ -82,6 +83,18 @@ typedef enum {
 #define SDI_12_RETRY_TIMEOUT_MS 100
 #define SDI_12_INNER_TRY_MIN 3
 #define SDI_12_OUTER_TRY_MIN 3
+
+#define SDI_12_TX_ENABLE_INV
+
+#ifdef SDI_12_TX_ENABLE_INV
+#define TX_ENABLE_ON 0
+#define TX_ENABLE_OFF 1
+#define TX_ENABLE_SETTING GPIO_OUTPUT_HIGH
+#else
+#define TX_ENABLE_ON 1
+#define TX_ENABLE_OFF 0
+#define TX_ENABLE_SETTING GPIO_OUTPUT_LOW
+#endif
 
 
 int8_t sdi_12_rx(struct device *uart_dev, uint8_t *buffer, unsigned int len,

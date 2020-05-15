@@ -138,6 +138,11 @@ static int8_t test_address_change(struct device *dev)
 	char address_orig = '0';
 	char address_test = 'x';
 
+	ret = prep_addr(dev, address_orig);
+	if ( ret != 0 ) {
+		return ret;
+	}
+
 	ret = sdi_12_change_address(dev, address_orig, address_test);
 
 	if ( ret != 0 ) {
@@ -469,6 +474,7 @@ void main(void)
 
 	int successes = 0, failures = 0;
 	for (i=0; i<test_function_no; i++) {
+		LOG_INF("Executing %s", test_functions_str[i]);
 		ret = (test_functions[i])(uart_dev);
 		if (ret == SDI_12_STATUS_OK) {
 			LOG_INF("Test %s suceeded", test_functions_str[i]);
@@ -477,7 +483,7 @@ void main(void)
 			LOG_ERR("Test %s failed", test_functions_str[i]);
 			failures++;
 		}
-		k_sleep(5000);
+		k_sleep(2000);
 	}
 	LOG_INF("successes = %d failures =%d", successes, failures);
 }

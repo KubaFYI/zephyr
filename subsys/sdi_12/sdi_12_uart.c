@@ -16,8 +16,35 @@
 LOG_MODULE_REGISTER(sdi_12_uart);
 
 struct uart_config uart_conf;
-struct k_timer rx_timeout_timer;
-bool rx_timeout = 0;
+
+struct k_timer tx_ongoing;
+
+struct k_sem tx_finished_tmr_sem;
+
+void tx_ongoing_timer_clbk(struct k_timer* timer_id);
+
+K_TIMER_DEFINE(tx_ongoing_timer,
+	       tx_ongoing_timer_clbk, NULL);
+
+struct uart_irq_data {
+	struct device *uart_dev;
+	uint8_t *tx_buffer;
+	uint8_t *rx_buffer;
+	unsigned int tx_remaining;
+	int rx_remaining;
+	unsigned int rx_collected;
+	struct k_sem tx_complete_sem;
+	struct k_sem rx_complete_sem;
+	struct k_sem rx_first_received_sem;
+	bool term_found;
+};
+
+static struct uart_irq_data irq_data;
+
+void tx_ongoing_timer_clbk(struct k_timer* timer_id)
+{
+	k_sem_give(&tx_finished_tmr_sem);
+}
 
 int8_t sdi_12_uart_init(struct device *uart_dev);
 
@@ -25,16 +52,67 @@ int8_t sdi_12_uart_send_break(struct device *uart_dev);
 
 int8_t sdi_12_uart_tx(struct device *uart_dev, uint8_t *buffer, unsigned int len);
 
-int8_t sdi_12_uart_rx(struct device *uart_dev, uint8_t *buffer, unsigned int len,
-				char *terminator, unsigned int timeout_start,
-				unsigned int timeout_end);
+int8_t sdi_12_uart_rx(struct device *uart_dev, uint8_t *buffer,
+			unsigned int len, unsigned int timeout_start,
+			unsigned int timeout_end);
 
-
-static void sdi_12_uart_rx_tmr_handler(struct k_timer *timer)
+static void sdi_12_uart_isr(void *user_data)
 {
-	bool *rx_timeout_p = k_timer_user_data_get(timer);
-	*rx_timeout_p = 1;
-	k_timer_stop(timer);
+	struct uart_irq_data *data = user_data;
+	unsigned int ret;
+	char c = 0;
+	int i;
+
+	uart_irq_update(data->uart_dev);
+
+	if (uart_irq_rx_ready(data->uart_dev)) {
+		while ( uart_fifo_read(data->uart_dev, &c, 1) != 0) {
+			if ( data->rx_remaining > 0 ) {
+				data->rx_buffer[0] = c;
+				data->rx_buffer++;
+				data->rx_remaining--;
+				data->rx_collected++;
+				if (data->rx_collected >= 2) {
+					data->term_found = \
+					data->rx_buffer[-2] == SDI_12_TERM[0] &&
+					data->rx_buffer[-1] == SDI_12_TERM[1];
+				} else {
+					data->term_found = false;
+				}
+
+				k_sem_give(&data->rx_first_received_sem);
+			}
+
+			if ( data->rx_remaining == 0 || data->term_found) {
+				/* Stop processing received data */
+				data->rx_remaining = -1;
+				uart_irq_rx_disable(data->uart_dev);
+				k_sem_give(&data->rx_first_received_sem);
+				k_sem_give(&data->rx_complete_sem);
+			}
+		}
+
+	}
+
+	if (uart_irq_tx_ready(data->uart_dev)) {
+		if ( data->tx_remaining > 0 ) {
+			ret = uart_fifo_fill(data->uart_dev,
+					     data->tx_buffer,
+					     data->tx_remaining);
+			for (i=0; i<ret; i++) {
+				// LOG_DBG("tx:0x%x", data->tx_buffer[i]);
+			}
+			if (ret < data->tx_remaining) {
+				data->tx_buffer += ret;
+				data->tx_remaining -= ret;
+			} else {
+				// LOG_DBG("TX done");
+				data->tx_remaining = 0;
+				uart_irq_tx_disable(data->uart_dev);
+				k_sem_give(&data->tx_complete_sem);
+			}
+		}
+	}
 }
 
 int8_t sdi_12_uart_init(struct device *uart_dev)
@@ -53,8 +131,21 @@ int8_t sdi_12_uart_init(struct device *uart_dev)
 		return SDI_12_STATUS_CONFIG_ERROR;
 	}
 
-	k_timer_init(&rx_timeout_timer, sdi_12_uart_rx_tmr_handler, NULL);
-	k_timer_user_data_set(&rx_timeout_timer, (void *)(&rx_timeout));
+	irq_data.uart_dev = uart_dev;
+	irq_data.tx_buffer = NULL;
+	irq_data.rx_buffer = NULL;
+	irq_data.tx_remaining = 0;
+	irq_data.rx_remaining = -1;
+	irq_data.rx_collected = 0;
+	k_sem_init(&irq_data.tx_complete_sem, 0, 1);
+	k_sem_init(&irq_data.rx_complete_sem, 0, 1);
+	k_sem_init(&irq_data.rx_first_received_sem, 0, 1);
+	k_sem_init(&tx_finished_tmr_sem, 0, 1);
+
+	uart_irq_tx_disable(uart_dev);
+	uart_irq_rx_disable(uart_dev);
+
+	uart_irq_callback_user_data_set(uart_dev, sdi_12_uart_isr, &irq_data);
 
 	return SDI_12_STATUS_OK;
 }
@@ -63,7 +154,7 @@ int8_t sdi_12_uart_init(struct device *uart_dev)
 int8_t sdi_12_uart_send_break(struct device *uart_dev)
 {
 	int ret;
-
+	char zero = '\0';
 
 	uart_conf.baudrate = SDI_12_BREAK_BAUDRATE;
 	ret = uart_configure(uart_dev, &uart_conf);
@@ -74,8 +165,8 @@ int8_t sdi_12_uart_send_break(struct device *uart_dev)
 	}
 
 	LOG_DBG("Sending break");
-	uart_poll_out(uart_dev, '\0');
-	k_sleep(15);
+	sdi_12_uart_tx(uart_dev, &zero, 1);
+	k_sleep(13 - SDI_12_SINGLE_SYMBOL_MS);
 	uart_conf.baudrate = SDI_12_BAUDRATE;
 
 	ret = uart_configure(uart_dev, &uart_conf);
@@ -88,81 +179,91 @@ int8_t sdi_12_uart_send_break(struct device *uart_dev)
 	return 0;
 }
 
-int8_t sdi_12_uart_tx(struct device *uart_dev, uint8_t *buffer, unsigned int len)
+int8_t sdi_12_uart_tx(struct device *uart_dev, uint8_t *buffer,
+			unsigned int len)
 {
-	int idx;
+	LOG_DBG("TX first %d chars of %s", len, log_strdup(buffer));
 
-	for ( idx = 0; idx < len; idx++ ) {
-		uart_poll_out(uart_dev, buffer[idx]);
-	}
+	irq_data.tx_buffer = buffer;
 
-	LOG_DBG("TX: %s", log_strdup(buffer));
+	irq_data.tx_remaining = len;
+
+	k_timer_start(&tx_ongoing_timer, len*SDI_12_SINGLE_SYMBOL_MS, 0);
+
+	uart_irq_tx_enable(uart_dev);
+	/* Rx is also enabled because TX bytes will be Rxed as a single line is
+	   used - they need to be discarded. */
+	uart_irq_rx_enable(uart_dev);
+
+	k_sem_take(&irq_data.tx_complete_sem, K_FOREVER);
+	k_sem_take(&tx_finished_tmr_sem, K_FOREVER);
+	
+	uart_irq_rx_disable(uart_dev);
+
+	LOG_DBG("TX done");
+
+	k_timer_stop(&tx_ongoing_timer);
 
 	return SDI_12_STATUS_OK;
 }
 
-int8_t sdi_12_uart_rx(struct device *uart_dev, uint8_t *buffer, unsigned int len,
-				char *terminator, unsigned int timeout_start,
-				unsigned int timeout_end)
+int8_t sdi_12_uart_rx(struct device *uart_dev, uint8_t *buffer,
+			unsigned int len, unsigned int timeout_start,
+			unsigned int timeout_end)
 {
-	/* For now this has an ugly, blocking implementation as a quick
-	 * placeholder
-	 */
-	int idx;
-	char c;
-	int term_size;
-	bool first_char_in = false;
-	s32_t timer_rem;
+	int ret;
 
-	if (terminator != NULL) {
-		term_size = strlen(terminator);
-	} else {
-		term_size = 0;
+	irq_data.rx_buffer = buffer;
+	irq_data.rx_collected = 0;
+	irq_data.rx_remaining = len - 1;
+	irq_data.term_found = false;
+
+	/* Consume possible leftover semaphore */
+	ret = k_sem_take(&irq_data.rx_first_received_sem, K_NO_WAIT);
+	if (ret == 0) {
+		LOG_DBG("Consume leftover semaphore");
 	}
 
-	rx_timeout = 0;
-	k_timer_start(&rx_timeout_timer, timeout_start, timeout_start);
+	uart_irq_rx_enable(uart_dev);
 
-	for ( idx = 0; idx < len-1; idx++ ) {
-		while ( uart_poll_in(uart_dev, &c) != 0 ) {
-			if ( rx_timeout != 0) {
-				LOG_WRN("Response timeout");
-				buffer[idx] = '\0';
-				LOG_DBG("RX: %s", log_strdup(buffer));
-				return SDI_12_STATUS_TIMEOUT;
-			}
-
-			/* Shell uart needs this sleep to print correctly */
-			k_sleep(1);
-		}
-
-		buffer[idx] = c;
-		if ( !first_char_in ) {
-			first_char_in = true;
-			timer_rem = k_timer_remaining_get(&rx_timeout_timer);
-			k_timer_start(&rx_timeout_timer,
-				      timeout_end - timeout_start + timer_rem,
-				      timeout_end - timeout_start + timer_rem);
-		}
-
-		if (term_size > 0 && idx >= term_size-1) {
-			if (strncmp(&(buffer[idx-term_size+1]),
-				terminator, term_size) == 0) {
-				LOG_DBG("Found terminator");
-				buffer[++idx] = '\0';
-				LOG_DBG("RX: %s", log_strdup(buffer));
-				return SDI_12_STATUS_OK;
-			}
-		}
+	ret = k_sem_take(&irq_data.rx_first_received_sem, K_MSEC(timeout_start));
+	if (ret == -EAGAIN) {
+		irq_data.rx_remaining = -1;
+		uart_irq_rx_disable(irq_data.uart_dev);
+		LOG_WRN("Timed out waiting for first char (%dms, sem:%d)",
+			timeout_start, 	k_sem_count_get(&irq_data.rx_first_received_sem));
+		return SDI_12_STATUS_TIMEOUT;
 	}
 
-	buffer[idx] = '\0';
+	/* This should technically time out after timeout_end-<whatever time
+	   passed since the begginging of this function> but we'd need to create
+	   a new timer to measure that so it's likely not worth it */
+	LOG_DBG("rx_complete_sem: %d", k_sem_count_get(&irq_data.rx_complete_sem));
+	ret = k_sem_take(&irq_data.rx_complete_sem, K_MSEC(timeout_end));
+	if (ret == -EAGAIN) {
+		irq_data.rx_remaining = -1;
+		uart_irq_rx_disable(irq_data.uart_dev);
+		LOG_WRN("Timed out waiting for complete RX (%dms)",
+			timeout_end);
+		return SDI_12_STATUS_TIMEOUT;
+	}
 
-	LOG_DBG("RX: %s", log_strdup(buffer));
+	uart_irq_rx_disable(irq_data.uart_dev);
+	irq_data.rx_remaining = -1;
 
-	if (terminator != NULL) {
+	if ( !irq_data.term_found ) {
+		/* If no timeout occured and no terminator was found it must
+		   mean that RX stopped due to a full buffer. */ 
+		LOG_ERR("Buffer Full");
 		return SDI_12_STATUS_BUFFER_FULL;
 	} else {
-		return SDI_12_STATUS_OK;
+		buffer[irq_data.rx_collected] = '\0';
+		irq_data.term_found = false;
 	}
+
+	LOG_DBG("RXed: %s (first %d chars)",
+		log_strdup(buffer), irq_data.rx_collected);
+
+	return SDI_12_STATUS_OK;
+
 }
