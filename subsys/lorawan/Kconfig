@@ -5,7 +5,7 @@
 
 menuconfig LORAWAN
 	bool "LoRaWAN support [EXPERIMENTAL]"
-	depends on LORA && RING_BUFFER
+	depends on LORA
 	select HAS_SEMTECH_LORAMAC
 	select HAS_SEMTECH_SOFT_SE
 	help
@@ -55,11 +55,23 @@ config LORAMAC_REGION_RU864
 
 endchoice
 
+config LORAWAN_USE_RX_RING_BUFFER
+	bool "Use Ring Buffer for Downlink [NOT YET FUNCTIONAL]"
+	default False
+	depends on RING_BUFFER
+	help
+	  This value enables a ring buffer used for storing incoming downlink
+	  messages instead of only having the latest message available.
+
+if LORAWAN_USE_RX_RING_BUFFER
+
 config LORAWAN_RX_RING_BUFFER_MAX_SIZE_WORDS
-	int "Downlink Ring Buffer Size in 32-bit words [disfunctional]"
-	default 0
+	int "Downlink Ring Buffer Size in 32-bit words [NOT YET FUNCTIONAL]"
+	default 8
 	help
 	  This value defines the maximum number 32-bit words used in a buffer
-	  for downlink messages. Set to zero to disable usage of a ring buffer.
+	  for downlink messages.
+
+endif # LORAWAN_USE_RX_RING_BUFFER
 
 endif # LORAWAN

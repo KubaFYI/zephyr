@@ -9,9 +9,9 @@
 #include <net/lorawan.h>
 #include <zephyr.h>
 
-#if CONFIG_LORAWAN_RX_RING_BUFFER_MAX_SIZE_WORDS != 0
+#if CONFIG_LORAWAN_USE_RX_RING_BUFFER
 #include <sys/ring_buffer.h>
-#endif // CONFIG_LORAWAN_RX_RING_BUFFER_MAX_SIZE_WORDS != 0
+#endif //def CONFIG_LORAWAN_USE_RX_RING_BUFFER
 
 #include <LoRaMac.h>
 
@@ -55,9 +55,9 @@ K_SEM_DEFINE(mcps_confirm_sem, 0, 1);
 K_MUTEX_DEFINE(lorawan_join_mutex);
 K_MUTEX_DEFINE(lorawan_send_mutex);
 
-#if CONFIG_LORAWAN_RX_RING_BUFFER_MAX_SIZE_WORDS != 0
+#if CONFIG_LORAWAN_USE_RX_RING_BUFFER
 
-#define RX_RING_BUF_SIZE_WORDS (CONFIG_LORAWAN_RX_BUFFER_MAX_SIZE_WORDS)
+#define RX_RING_BUF_SIZE_WORDS (CONFIG_LORAWAN_RX_RING_BUFFER_MAX_SIZE_WORDS)
 struct rx_ring_buf {
     struct ring_buf rb;
     u32_t buffer[RX_RING_BUF_SIZE_WORDS];
@@ -71,7 +71,7 @@ uint8_t rx_buffer[LORAWAN_PLD_MAX_SIZE];
 uint8_t rx_buffer_stored_len;
 uint8_t rx_buffer_port;
 
-#endif // CONFIG_LORAWAN_RX_RING_BUFFER_MAX_SIZE_WORDS != 0
+#endif //def CONFIG_LORAWAN_USE_RX_RING_BUFFER
 
 static uint16_t rx_buf_avail_elem;
 static uint16_t rx_buf_discarded_elem;
@@ -257,7 +257,7 @@ static int rx_buf_get(u8_t *port, u8_t *payload, u16_t len)
 {
 	int len_to_copy;
 
-#if CONFIG_LORAWAN_RX_RING_BUFFER_MAX_SIZE_WORDS != 0
+#if CONFIG_LORAWAN_USE_RX_RING_BUFFER
 	int ret;
 	u16_t rx_buffer_stored_len;
 
@@ -301,7 +301,7 @@ static int rx_buf_put(u8_t port, u8_t *payload, u16_t len)
 {
 	int ret;
 
-#if CONFIG_LORAWAN_RX_RING_BUFFER_MAX_SIZE_WORDS != 0
+#if CONFIG_LORAWAN_USE_RX_RING_BUFFER
 	memcpy(payload_tmp, payload, len);
 
 	ret = ring_buf_item_put(&rx_buf.rb, len, port, payload_tmp,
@@ -638,10 +638,6 @@ static int lorawan_init(struct device *dev)
 {
 	LoRaMacStatus_t status;
 
-	uint8_t test[] = {0xaa, 0x55, 0x11};
-	uint32_t test32;
-	memcpy(&test32, test, sizeof(uint32_t));
-
 	macPrimitives.MacMcpsConfirm = McpsConfirm;
 	macPrimitives.MacMcpsIndication = McpsIndication;
 	macPrimitives.MacMlmeConfirm = MlmeConfirm;
@@ -660,7 +656,7 @@ static int lorawan_init(struct device *dev)
 	}
 
 
-#if CONFIG_LORAWAN_RX_RING_BUFFER_MAX_SIZE_WORDS != 0
+#if CONFIG_LORAWAN_USE_RX_RING_BUFFER
 	ring_buf_init(&rx_buf.rb, sizeof(rx_buf.buffer), rx_buf.buffer);
 #endif
 
