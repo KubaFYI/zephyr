@@ -75,9 +75,10 @@ uint8_t rx_buffer_port;
 
 static uint16_t rx_buf_avail_elem;
 static uint16_t rx_buf_discarded_elem;
+#if CONFIG_LORAWAN_USE_RX_RING_BUFFER
 static uint32_t payload_tmp[LORAWAN_PLD_MAX_SIZE_CEIL_32];
 static uint8_t payload_tmp_size = LORAWAN_PLD_MAX_SIZE_CEIL_32;
-
+#endif
 const char *status2str(int status)
 {
 	switch (status) {
@@ -299,9 +300,9 @@ static int rx_buf_get(u8_t *port, u8_t *payload, u16_t len)
 */
 static int rx_buf_put(u8_t port, u8_t *payload, u16_t len)
 {
-	int ret;
 
 #if CONFIG_LORAWAN_USE_RX_RING_BUFFER
+	int ret;
 	memcpy(payload_tmp, payload, len);
 
 	ret = ring_buf_item_put(&rx_buf.rb, len, port, payload_tmp,
