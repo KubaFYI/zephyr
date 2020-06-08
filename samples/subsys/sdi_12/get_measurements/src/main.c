@@ -30,36 +30,57 @@ struct device *uart_dev;
 void main(void)
 {
     int ret;
-    char addr = '5';
-    double data[1];
-    int datalen = 1;
+    char addr = '0';
+    double data[10];
+    int datalen = 10;
+    int i;
+
+    static struct device *uart_dev;
+    static struct device *gpio_dev;
+    gpio_pin_t tx_enable_pin;
 
 #ifdef CONFIG_BOARD_ADAFRUIT_FEATHER_M0_BASIC_PROTO
     struct device *muxa = device_get_binding(DT_ATMEL_SAM0_PINMUX_PINMUX_A_LABEL);
-
+    /* PA16 - Feather pin 11 - pad 0 - TX */
     pinmux_pin_set(muxa, 16, PINMUX_FUNC_C);
+    /* PA18 - Feather pin 10 - pad 2 - RX */
     pinmux_pin_set(muxa, 18, PINMUX_FUNC_C);
-    uart_dev = device_get_binding("SERCOM1");
+    uart_dev = device_get_binding(DT_ALIAS_SERCOM_1_LABEL);
+    gpio_dev = device_get_binding(DT_ALIAS_PORT_A_LABEL);
+    tx_enable_pin = 19;
 #else
     uart_dev = device_get_binding("YOUR_SOC_UART_LABEL");
+    gpio_dev = device_get_binding("YOUR_SOC_GPIO_PORT_LABEL");
 #endif
 
+    if (uart_dev == NULL) {
+        LOG_ERR("Getting UART device failed.");
+        return;
+    }
 
-    LOG_INF("uart dev: 0x%x", uart_dev);
-    ret = sdi_12_init(uart_dev);
+    if (gpio_dev == NULL) {
+        LOG_ERR("Getting UART device failed.");
+        return;
+    }
+
+    ret = sdi_12_init(uart_dev, gpio_dev, tx_enable_pin);
     if (ret != 0) {
         LOG_ERR("Initialization failed!");
         return;
     }
 
+    k_sleep(1000);
 
     while (1) {
         ret = sdi_12_get_measurements(uart_dev, addr,
                 data, datalen, false);
         if (ret == 0 ) {
             LOG_INF("okay");
+            for(i=0; i<datalen; i++) {
+                LOG_INF("Meas %d: %d.%d", i, data[i], (int)((data[i]-(int)data[i])*10));
+            }
         } else {
-            LOG_INF("%s!", log_strdup(SDI_12_ERR_TO_STR(ret)));
+            LOG_INF("er: %s!", log_strdup(SDI_12_ERR_TO_STR(ret)));
         }
         k_sleep(5000);
     }
