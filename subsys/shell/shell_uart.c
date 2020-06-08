@@ -9,6 +9,8 @@
 #include <init.h>
 #include <logging/log.h>
 
+#include <usb/usb_device.h>
+
 #define LOG_MODULE_NAME shell_uart
 LOG_MODULE_REGISTER(shell_uart);
 
@@ -273,7 +275,9 @@ static int enable_shell_uart(struct device *arg)
 	u32_t level =
 		(CONFIG_SHELL_BACKEND_SERIAL_LOG_LEVEL > LOG_LEVEL_DBG) ?
 		CONFIG_LOG_MAX_LEVEL : CONFIG_SHELL_BACKEND_SERIAL_LOG_LEVEL;
-
+#if CONFIG_UART_SHELL_USE_CDC_ACM
+	usb_enable(NULL);
+#endif
 	if (dev == NULL) {
 		return -ENODEV;
 	}
@@ -282,7 +286,11 @@ static int enable_shell_uart(struct device *arg)
 
 	return 0;
 }
+#if CONFIG_UART_SHELL_USE_CDC_ACM
+SYS_INIT(enable_shell_uart, POST_KERNEL, CONFIG_APPLICATION_INIT_PRIORITY);
+#else
 SYS_INIT(enable_shell_uart, POST_KERNEL, 0);
+#endif
 
 const struct shell *shell_backend_uart_get_ptr(void)
 {
