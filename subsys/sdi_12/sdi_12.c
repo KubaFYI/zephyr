@@ -736,8 +736,6 @@ int8_t sdi_12_prep_command(char *cmd, char address,
 	}
 
 	cmd[cmd_idx++] = '!';
-	cmd[cmd_idx++] = SDI_12_TERM[0];
-	cmd[cmd_idx++] = SDI_12_TERM[1];
 	cmd[cmd_idx] = '\0';
 
 	return SDI_12_STATUS_OK;
