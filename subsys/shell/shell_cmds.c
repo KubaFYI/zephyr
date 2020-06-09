@@ -380,6 +380,11 @@ static int cmd_resize(const struct shell *shell, size_t argc, char **argv)
 	return 0;
 }
 
+static bool no_args(const struct shell_static_entry *entry)
+{
+	return (entry->args.mandatory == 1) && (entry->args.optional == 0);
+}
+
 static int cmd_select(const struct shell *shell, size_t argc, char **argv)
 {
 	const struct shell_static_entry *candidate = NULL;
@@ -388,10 +393,12 @@ static int cmd_select(const struct shell *shell, size_t argc, char **argv)
 
 	argc--;
 	argv = argv + 1;
-	candidate = shell_get_last_command(shell, argc, argv, &matching_argc,
-					   &entry, true);
+	candidate = shell_get_last_command(shell->ctx->selected_cmd,
+					   argc, (const char **)argv,
+					   &matching_argc, &entry, true);
 
-	if ((candidate != NULL) && (argc == matching_argc)) {
+	if ((candidate != NULL) && !no_args(candidate)
+	    && (argc == matching_argc)) {
 		shell->ctx->selected_cmd = candidate;
 		return 0;
 	}
@@ -447,10 +454,12 @@ SHELL_STATIC_SUBCMD_SET_CREATE(m_sub_resize,
 
 SHELL_CMD_ARG_REGISTER(clear, NULL, SHELL_HELP_CLEAR, cmd_clear, 1, 0);
 SHELL_CMD_REGISTER(shell, &m_sub_shell, SHELL_HELP_SHELL, NULL);
-SHELL_CMD_ARG_REGISTER(help, NULL, SHELL_HELP_HELP, cmd_help, 1, 255);
+SHELL_CMD_ARG_REGISTER(help, NULL, SHELL_HELP_HELP, cmd_help,
+			1, SHELL_OPT_ARG_CHECK_SKIP);
 SHELL_COND_CMD_ARG_REGISTER(CONFIG_SHELL_HISTORY, history, NULL,
 			SHELL_HELP_HISTORY, cmd_history, 1, 0);
 SHELL_COND_CMD_ARG_REGISTER(CONFIG_SHELL_CMDS_RESIZE, resize, &m_sub_resize,
 			SHELL_HELP_RESIZE, cmd_resize, 1, 1);
 SHELL_COND_CMD_ARG_REGISTER(CONFIG_SHELL_CMDS_SELECT, select, NULL,
-			    SHELL_HELP_SELECT, cmd_select, 2, 255);
+			    SHELL_HELP_SELECT, cmd_select, 2,
+			    SHELL_OPT_ARG_CHECK_SKIP);

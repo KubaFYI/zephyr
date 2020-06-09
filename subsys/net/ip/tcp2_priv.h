@@ -33,28 +33,27 @@
 #endif
 
 #if IS_ENABLED(CONFIG_NET_TEST_PROTOCOL)
-#define tcp_pkt_alloc(_len) tp_pkt_alloc(_len, tp_basename(__FILE__), __LINE__)
+#define tcp_pkt_alloc(_conn, _len)					\
+({									\
+	sa_family_t _family = net_context_get_family((_conn)->context);	\
+	struct net_pkt *_pkt = net_pkt_alloc_with_buffer((_conn)->iface,\
+							 (_len),	\
+							 _family,	\
+							 IPPROTO_TCP,	\
+							 K_NO_WAIT);	\
+									\
+	tp_pkt_alloc(_pkt, tp_basename(__FILE__), __LINE__);		\
+									\
+	_pkt;								\
+})
 #define tcp_pkt_clone(_pkt) tp_pkt_clone(_pkt, tp_basename(__FILE__), __LINE__)
 #define tcp_pkt_unref(_pkt) tp_pkt_unref(_pkt, tp_basename(__FILE__), __LINE__)
 #else
-static struct net_pkt *tcp_pkt_alloc(size_t len)
-{
-	struct net_pkt *pkt = net_pkt_alloc(K_NO_WAIT);
+#define tcp_pkt_alloc(_conn, _len)					\
+	net_pkt_alloc_with_buffer((_conn)->iface, (_len),		\
+				  net_context_get_family((_conn)->context), \
+				  IPPROTO_TCP, K_NO_WAIT)
 
-	pkt->family = AF_INET;
-
-	NET_ASSERT(pkt);
-
-	if (len) {
-		struct net_buf *buf = net_pkt_get_frag(pkt, K_NO_WAIT);
-
-		net_buf_add(buf, len);
-		net_pkt_frag_insert(pkt, buf);
-		NET_ASSERT(buf);
-	}
-
-	return pkt;
-}
 #define tcp_pkt_clone(_pkt) net_pkt_clone(_pkt, K_NO_WAIT)
 #define tcp_pkt_unref(_pkt) net_pkt_unref(_pkt)
 #endif
@@ -80,14 +79,14 @@ static struct net_pkt *tcp_pkt_alloc(size_t len)
 	(_conn)->state = _s;						\
 })
 
-#define TCPOPT_PAD	0
+#define TCPOPT_END	0
 #define TCPOPT_NOP	1
 #define TCPOPT_MAXSEG	2
 #define TCPOPT_WINDOW	3
 
 enum pkt_addr {
-	SRC = 1,
-	DST = 0
+	TCP_EP_SRC = 1,
+	TCP_EP_DST = 0
 };
 
 struct tcphdr {
@@ -123,8 +122,8 @@ enum tcp_state {
 	TCP_SYN_SENT,
 	TCP_SYN_RECEIVED,
 	TCP_ESTABLISHED,
-	TCP_FIN_WAIT1,
-	TCP_FIN_WAIT2,
+	TCP_FIN_WAIT_1,
+	TCP_FIN_WAIT_2,
 	TCP_CLOSE_WAIT,
 	TCP_CLOSING,
 	TCP_LAST_ACK,
@@ -138,6 +137,13 @@ union tcp_endpoint {
 	struct sockaddr_in6 sin6;
 };
 
+struct tcp_options {
+	u16_t mss;
+	u16_t window;
+	bool mss_found : 1;
+	bool wnd_found : 1;
+};
+
 struct tcp { /* TCP connection */
 	sys_snode_t next;
 	struct net_context *context;
@@ -146,13 +152,15 @@ struct tcp { /* TCP connection */
 	enum tcp_state state;
 	u32_t seq;
 	u32_t ack;
-	union tcp_endpoint *src;
-	union tcp_endpoint *dst;
+	union tcp_endpoint src;
+	union tcp_endpoint dst;
 	u16_t win;
+	struct tcp_options recv_options;
 	struct k_delayed_work send_timer;
 	sys_slist_t send_queue;
 	bool in_retransmission;
 	size_t send_retries;
+	struct k_delayed_work timewait_timer;
 	struct net_if *iface;
 	net_tcp_accept_cb_t accept_cb;
 	atomic_t ref_count;

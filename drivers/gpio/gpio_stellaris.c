@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#define DT_DRV_COMPAT ti_stellaris_gpio
+
 #include <errno.h>
 #include <device.h>
 #include <drivers/gpio.h>
@@ -29,7 +31,7 @@ struct gpio_stellaris_runtime {
 
 #define DEV_CFG(dev)                                     \
 	((const struct gpio_stellaris_config *const)     \
-	(dev)->config->config_info)
+	(dev)->config_info)
 
 #define DEV_DATA(dev)					 \
 	((struct gpio_stellaris_runtime *const)          \
@@ -253,9 +255,6 @@ static const struct gpio_driver_api gpio_stellaris_driver_api = {
 	.disable_callback = gpio_stellaris_disable_callback,
 };
 
-#define PORT_PIN_MASK(n) \
-	GPIO_PORT_PIN_MASK_FROM_NGPIOS(DT_INST_## n ##_TI_STELLARIS_GPIO_NGPIOS)
-
 #define STELLARIS_GPIO_DEVICE(n)							\
 	static void port_## n ##_stellaris_config_func(struct device *dev);		\
 											\
@@ -263,15 +262,15 @@ static const struct gpio_driver_api gpio_stellaris_driver_api = {
 											\
 	static const struct gpio_stellaris_config gpio_stellaris_port_## n ##_config = {\
 		.common = {								\
-			.port_pin_mask = PORT_PIN_MASK(n),				\
+			.port_pin_mask = GPIO_PORT_PIN_MASK_FROM_DT_INST(n),		\
 		},									\
-		.base = DT_INST_## n ##_TI_STELLARIS_GPIO_BASE_ADDRESS,			\
-		.port_map = BIT_MASK(DT_INST_## n ##_TI_STELLARIS_GPIO_NGPIOS),		\
+		.base = DT_INST_REG_ADDR(n),			\
+		.port_map = BIT_MASK(DT_INST_PROP(n, ngpios)),		\
 		.config_func = port_## n ##_stellaris_config_func,			\
 	};										\
 											\
 	DEVICE_AND_API_INIT(gpio_stellaris_port_## n,					\
-			    DT_INST_## n ## _TI_STELLARIS_GPIO_LABEL,			\
+			    DT_INST_LABEL(n),						\
 			    gpio_stellaris_init,					\
 			    &port_## n ##_stellaris_runtime,				\
 			    &gpio_stellaris_port_## n ##_config,			\
@@ -280,38 +279,12 @@ static const struct gpio_driver_api gpio_stellaris_driver_api = {
 											\
 	static void port_## n ##_stellaris_config_func(struct device *dev)		\
 	{										\
-		IRQ_CONNECT(DT_INST_## n ##_TI_STELLARIS_GPIO_IRQ_0,			\
-			    DT_INST_## n ##_TI_STELLARIS_GPIO_IRQ_0_PRIORITY,		\
+		IRQ_CONNECT(DT_INST_IRQN(n),			\
+			    DT_INST_IRQ(n, priority),		\
 			    gpio_stellaris_isr,						\
 			    DEVICE_GET(gpio_stellaris_port_## n), 0);			\
 											\
-		irq_enable(DT_INST_## n ##_TI_STELLARIS_GPIO_IRQ_0);			\
+		irq_enable(DT_INST_IRQN(n));			\
 	}
 
-#ifdef DT_INST_0_TI_STELLARIS_GPIO
-STELLARIS_GPIO_DEVICE(0)
-#endif
-
-#ifdef DT_INST_1_TI_STELLARIS_GPIO
-STELLARIS_GPIO_DEVICE(1)
-#endif
-
-#ifdef DT_INST_2_TI_STELLARIS_GPIO
-STELLARIS_GPIO_DEVICE(2)
-#endif
-
-#ifdef DT_INST_3_TI_STELLARIS_GPIO
-STELLARIS_GPIO_DEVICE(3)
-#endif
-
-#ifdef DT_INST_4_TI_STELLARIS_GPIO
-STELLARIS_GPIO_DEVICE(4)
-#endif
-
-#ifdef DT_INST_5_TI_STELLARIS_GPIO
-STELLARIS_GPIO_DEVICE(5)
-#endif
-
-#ifdef DT_INST_6_TI_STELLARIS_GPIO
-STELLARIS_GPIO_DEVICE(6)
-#endif
+DT_INST_FOREACH_STATUS_OKAY(STELLARIS_GPIO_DEVICE)

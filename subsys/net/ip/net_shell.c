@@ -306,6 +306,12 @@ static void iface_cb(struct net_if *iface, void *user_data)
 		return;
 	}
 
+#ifdef CONFIG_NET_POWER_MANAGEMENT
+	if (net_if_is_suspended(iface)) {
+		PR_INFO("Interface is suspended, thus not able to tx/rx.\n");
+	}
+#endif
+
 	if (net_if_get_link_addr(iface) &&
 	    net_if_get_link_addr(iface)->addr) {
 		PR("Link addr : %s\n",
@@ -842,6 +848,25 @@ static void print_tc_rx_stats(const struct shell *shell, struct net_if *iface)
 #endif /* NET_TC_RX_COUNT > 1 */
 }
 
+static void print_net_pm_stats(const struct shell *shell, struct net_if *iface)
+{
+#if defined(CONFIG_NET_STATISTICS_POWER_MANAGEMENT)
+	PR("PM suspend stats:\n");
+	PR("\tLast time     : %u ms\n",
+	   GET_STAT(iface, pm.last_suspend_time));
+	PR("\tAverage time  : %u ms\n",
+	   (u32_t)(GET_STAT(iface, pm.overall_suspend_time) /
+		   GET_STAT(iface, pm.suspend_count)));
+	PR("\tTotal time    : %llu ms\n",
+	   GET_STAT(iface, pm.overall_suspend_time));
+	PR("\tHow many times: %u\n",
+	   GET_STAT(iface, pm.suspend_count));
+#else
+	ARG_UNUSED(shell);
+	ARG_UNUSED(iface);
+#endif
+}
+
 static void net_shell_print_statistics(struct net_if *iface, void *user_data)
 {
 	struct net_shell_user_data *data = user_data;
@@ -977,6 +1002,8 @@ static void net_shell_print_statistics(struct net_if *iface, void *user_data)
 		}
 	}
 #endif /* CONFIG_NET_STATISTICS_PPP && CONFIG_NET_STATISTICS_USER_API */
+
+	print_net_pm_stats(shell, iface);
 }
 #endif /* CONFIG_NET_STATISTICS */
 
@@ -1618,7 +1645,7 @@ static int cmd_net_dns_query(const struct shell *shell, size_t argc,
 {
 
 #if defined(CONFIG_DNS_RESOLVER)
-#define DNS_TIMEOUT K_MSEC(2000) /* ms */
+#define DNS_TIMEOUT (MSEC_PER_SEC * 2) /* ms */
 	enum dns_query_type qtype = DNS_QUERY_TYPE_A;
 	char *host, *type = NULL;
 	int ret, arg = 1;
@@ -2868,7 +2895,7 @@ static enum net_verdict handle_ipv6_echo_reply(struct net_pkt *pkt,
 #ifdef CONFIG_IEEE802154
 		 "rssi=%d "
 #endif
-#ifdef CONFIG_FLOAT
+#ifdef CONFIG_FPU
 		 "time=%.2f ms\n",
 #else
 		 "time=%d ms\n",
@@ -2882,7 +2909,7 @@ static enum net_verdict handle_ipv6_echo_reply(struct net_pkt *pkt,
 #ifdef CONFIG_IEEE802154
 		 net_pkt_ieee802154_rssi(pkt),
 #endif
-#ifdef CONFIG_FLOAT
+#ifdef CONFIG_FPU
 		 ((u32_t)k_cyc_to_ns_floor64(cycles) / 1000000.f));
 #else
 		 ((u32_t)k_cyc_to_ns_floor64(cycles) / 1000000));
@@ -2943,7 +2970,7 @@ static int ping_ipv6(const struct shell *shell,
 			break;
 		}
 
-		k_sleep(interval);
+		k_msleep(interval);
 	}
 
 	remove_ipv6_ping_handler();
@@ -2995,7 +3022,7 @@ static enum net_verdict handle_ipv4_echo_reply(struct net_pkt *pkt,
 	cycles = k_cycle_get_32() - cycles;
 
 	PR_SHELL(shell_for_ping, "%d bytes from %s to %s: icmp_seq=%d ttl=%d "
-#ifdef CONFIG_FLOAT
+#ifdef CONFIG_FPU
 		 "time=%.2f ms\n",
 #else
 		 "time=%d ms\n",
@@ -3006,7 +3033,7 @@ static enum net_verdict handle_ipv4_echo_reply(struct net_pkt *pkt,
 		 net_sprint_ipv4_addr(&ip_hdr->dst),
 		 ntohs(icmp_echo->sequence),
 		 ip_hdr->ttl,
-#ifdef CONFIG_FLOAT
+#ifdef CONFIG_FPU
 		 ((u32_t)k_cyc_to_ns_floor64(cycles) / 1000000.f));
 #else
 		 ((u32_t)k_cyc_to_ns_floor64(cycles) / 1000000));
@@ -3048,7 +3075,7 @@ static int ping_ipv4(const struct shell *shell,
 			break;
 		}
 
-		k_sleep(interval);
+		k_msleep(interval);
 	}
 
 	remove_ipv4_ping_handler();
@@ -3175,6 +3202,95 @@ wait_reply:
 #endif
 }
 
+static struct net_pkt *get_net_pkt(const char *ptr_str)
+{
+	u8_t buf[sizeof(intptr_t)];
+	intptr_t ptr = 0;
+	size_t len;
+	int i;
+
+	if (ptr_str[0] == '0' && ptr_str[1] == 'x') {
+		ptr_str += 2;
+	}
+
+	len = hex2bin(ptr_str, strlen(ptr_str), buf, sizeof(buf));
+	if (!len) {
+		return NULL;
+	}
+
+	for (i = len - 1; i >= 0; i--) {
+		ptr |= buf[i] << 8 * (len - 1 - i);
+	}
+
+	return (struct net_pkt *)ptr;
+}
+
+static void net_pkt_buffer_info(const struct shell *shell, struct net_pkt *pkt)
+{
+	struct net_buf *buf = pkt->buffer;
+
+	PR("net_pkt %p buffer chain:\n", pkt);
+	PR("%p[%d]", pkt, atomic_get(&pkt->atomic_ref));
+
+	if (buf) {
+		PR("->");
+	}
+
+	while (buf) {
+		PR("%p[%d/%u (%u)]",
+		   buf, atomic_get(&pkt->atomic_ref), buf->len, buf->size);
+
+		buf = buf->frags;
+		if (buf) {
+			PR("->");
+		}
+	}
+
+	PR("\n");
+}
+
+static void net_pkt_buffer_hexdump(const struct shell *shell,
+				   struct net_pkt *pkt)
+{
+	struct net_buf *buf = pkt->buffer;
+	int i = 0;
+
+	if (!buf || buf->ref == 0) {
+		return;
+	}
+
+	PR("net_pkt %p buffer chain hexdump:\n", pkt);
+
+	while (buf) {
+		PR("net_buf[%d] %p\n", i++, buf);
+		shell_hexdump(shell, buf->data, buf->len);
+		buf = buf->frags;
+	}
+}
+
+static int cmd_net_pkt(const struct shell *shell, size_t argc, char *argv[])
+{
+	if (argv[1]) {
+		struct net_pkt *pkt;
+
+		pkt = get_net_pkt(argv[1]);
+		if (!pkt) {
+			PR_ERROR("Invalid ptr value (%s). "
+				 "Example: 0x01020304\n", argv[1]);
+			return -ENOEXEC;
+		}
+
+		net_pkt_buffer_info(shell, pkt);
+		PR("\n");
+		net_pkt_buffer_hexdump(shell, pkt);
+	} else {
+		PR_INFO("Pointer value must be given.\n");
+		return -ENOEXEC;
+	}
+
+	return 0;
+}
+
 static int cmd_net_ppp_ping(const struct shell *shell, size_t argc,
 			    char *argv[])
 {
@@ -3186,7 +3302,7 @@ static int cmd_net_ppp_ping(const struct shell *shell, size_t argc,
 			return -ENOEXEC;
 		}
 
-		ret = net_ppp_ping(idx, K_SECONDS(1));
+		ret = net_ppp_ping(idx, MSEC_PER_SEC * 1);
 		if (ret < 0) {
 			if (ret == -EAGAIN) {
 				PR_INFO("PPP Echo-Req timeout.\n");
@@ -3926,6 +4042,91 @@ usage:
 	return 0;
 }
 
+static int cmd_net_suspend(const struct shell *shell, size_t argc,
+			   char *argv[])
+{
+#if defined(CONFIG_NET_POWER_MANAGEMENT)
+	if (argv[1]) {
+		struct net_if *iface = NULL;
+		struct device *dev;
+		int idx;
+		int ret;
+
+		idx = get_iface_idx(shell, argv[1]);
+		if (idx < 0) {
+			return -ENOEXEC;
+		}
+
+		iface = net_if_get_by_index(idx);
+		if (!iface) {
+			PR_WARNING("No such interface in index %d\n", idx);
+			return -ENOEXEC;
+		}
+
+		dev = net_if_get_device(iface);
+
+		ret = device_set_power_state(dev, DEVICE_PM_SUSPEND_STATE,
+					     NULL, NULL);
+		if (ret != 0) {
+			PR_INFO("Iface could not be suspended: ");
+
+			if (ret == -EBUSY) {
+				PR_INFO("device is busy\n");
+			} else if (ret == -EALREADY) {
+				PR_INFO("dehive is already suspended\n");
+			}
+		}
+	} else {
+		PR("Usage:\n");
+		PR("\tsuspend <iface index>\n");
+	}
+#else
+	PR_INFO("You need a network driver supporting Power Management.\n");
+#endif /* CONFIG_NET_POWER_MANAGEMENT */
+
+	return 0;
+}
+
+static int cmd_net_resume(const struct shell *shell, size_t argc,
+			  char *argv[])
+{
+#if defined(CONFIG_NET_POWER_MANAGEMENT)
+	if (argv[1]) {
+		struct net_if *iface = NULL;
+		struct device *dev;
+		int idx;
+		int ret;
+
+		idx = get_iface_idx(shell, argv[1]);
+		if (idx < 0) {
+			return -ENOEXEC;
+		}
+
+		iface = net_if_get_by_index(idx);
+		if (!iface) {
+			PR_WARNING("No such interface in index %d\n", idx);
+			return -ENOEXEC;
+		}
+
+		dev = net_if_get_device(iface);
+
+		ret = device_set_power_state(dev, DEVICE_PM_ACTIVE_STATE,
+					     NULL, NULL);
+		if (ret != 0) {
+			PR_INFO("Iface could not be resumed\n");
+		}
+
+	} else {
+		PR("Usage:\n");
+		PR("\tresume <iface index>\n");
+	}
+#else
+	PR_INFO("You need a network driver supporting Power Management.\n");
+#endif /* CONFIG_NET_POWER_MANAGEMENT */
+
+	return 0;
+}
+
 #if defined(CONFIG_WEBSOCKET_CLIENT)
 static void websocket_context_cb(struct websocket_context *context,
 				 void *user_data)
@@ -4275,6 +4476,14 @@ SHELL_STATIC_SUBCMD_SET_CREATE(net_cmd_ping,
 	SHELL_SUBCMD_SET_END
 );
 
+SHELL_STATIC_SUBCMD_SET_CREATE(net_cmd_pkt,
+	SHELL_CMD(--help, NULL,
+		  "'net pkt [ptr in hex]' "
+		  "Print information about given net_pkt",
+		  cmd_net_pkt),
+	SHELL_SUBCMD_SET_END
+);
+
 SHELL_STATIC_SUBCMD_SET_CREATE(net_commands,
 	SHELL_CMD(allocs, NULL, "Print network memory allocations.",
 		  cmd_net_allocs),
@@ -4298,12 +4507,16 @@ SHELL_STATIC_SUBCMD_SET_CREATE(net_commands,
 	SHELL_CMD(nbr, &net_cmd_nbr, "Print neighbor information.",
 		  cmd_net_nbr),
 	SHELL_CMD(ping, &net_cmd_ping, "Ping a network host.", cmd_net_ping),
+	SHELL_CMD(pkt, &net_cmd_pkt, "net_pkt information.", cmd_net_pkt),
 	SHELL_CMD(ppp, &net_cmd_ppp, "PPP information.", cmd_net_ppp_status),
+	SHELL_CMD(resume, NULL, "Resume a network interface", cmd_net_resume),
 	SHELL_CMD(route, NULL, "Show network route.", cmd_net_route),
 	SHELL_CMD(stacks, NULL, "Show network stacks information.",
 		  cmd_net_stacks),
 	SHELL_CMD(stats, &net_cmd_stats, "Show network statistics.",
 		  cmd_net_stats),
+	SHELL_CMD(suspend, NULL, "Suspend a network interface",
+		  cmd_net_suspend),
 	SHELL_CMD(tcp, &net_cmd_tcp, "Connect/send/close TCP connection.",
 		  cmd_net_tcp),
 	SHELL_CMD(vlan, &net_cmd_vlan, "Show VLAN information.", cmd_net_vlan),

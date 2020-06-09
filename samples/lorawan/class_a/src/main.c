@@ -10,6 +10,11 @@
 #include <net/lorawan.h>
 #include <zephyr.h>
 
+#define DEFAULT_RADIO_NODE DT_ALIAS(lora0)
+BUILD_ASSERT(DT_HAS_NODE_STATUS_OKAY(DEFAULT_RADIO_NODE),
+	     "No default LoRa radio specified in DT");
+#define DEFAULT_RADIO DT_LABEL(DEFAULT_RADIO_NODE)
+
 /* Customize based on network configuration */
 #define LORAWAN_DEV_EUI			{ 0xDD, 0xEE, 0xAA, 0xDD, 0xBB, 0xEE,\
 					  0xEE, 0xFF }
@@ -22,7 +27,7 @@
 					  0x09, 0xCF, 0x4F, 0x3C }
 #define LORAWAN_DEFAULT_DATARATE	LORAWAN_DR_0
 
-#define DELAY 5000
+#define DELAY K_MSEC(5000)
 
 #define LOG_LEVEL CONFIG_LOG_DEFAULT_LEVEL
 #include <logging/log.h>
@@ -40,9 +45,9 @@ void main(void)
 	u8_t app_key[] = LORAWAN_APP_KEY;
 	int ret;
 
-	lora_dev = device_get_binding(DT_INST_0_SEMTECH_SX1276_LABEL);
+	lora_dev = device_get_binding(DEFAULT_RADIO);
 	if (!lora_dev) {
-		LOG_ERR("%s Device not found", DT_INST_0_SEMTECH_SX1276_LABEL);
+		LOG_ERR("%s Device not found", DEFAULT_RADIO);
 		return;
 	}
 

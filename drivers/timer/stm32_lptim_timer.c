@@ -124,9 +124,10 @@ int z_clock_driver_init(struct device *device)
 #endif /* CONFIG_STM32_LPTIM_CLOCK_LSI */
 
 	/* Clear the event flag and possible pending interrupt */
-	IRQ_CONNECT(DT_LPTIM_1_IRQ, DT_LPTIM_1_IRQ_PRI,
-			lptim_irq_handler, 0, 0);
-	irq_enable(DT_LPTIM_1_IRQ);
+	IRQ_CONNECT(DT_IRQN(DT_NODELABEL(lptim1)),
+		    DT_IRQ(DT_NODELABEL(lptim1), priority),
+		    lptim_irq_handler, 0, 0);
+	irq_enable(DT_IRQN(DT_NODELABEL(lptim1)));
 
 	/* configure the LPTIM1 counter */
 	LL_LPTIM_SetClockSource(LPTIM1, LL_LPTIM_CLK_SOURCE_INTERNAL);
@@ -188,7 +189,7 @@ void z_clock_set_timeout(s32_t ticks, bool idle)
 	LL_LPTIM_ClearFlag_ARROK(LPTIM1);
 
 #ifdef CONFIG_TICKLESS_KERNEL
-	if (ticks == K_FOREVER) {
+	if (ticks == K_TICKS_FOREVER) {
 		/* disable LPTIM */
 		LL_APB1_GRP1_ForceReset(LL_APB1_GRP1_PERIPH_LPTIM1);
 		LL_APB1_GRP1_DisableClock(LL_APB1_GRP1_PERIPH_LPTIM1);

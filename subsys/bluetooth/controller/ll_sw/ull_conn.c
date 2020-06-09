@@ -606,7 +606,7 @@ int ull_conn_init(void)
 {
 	int err;
 
-	entropy = device_get_binding(CONFIG_ENTROPY_NAME);
+	entropy = device_get_binding(DT_CHOSEN_ZEPHYR_ENTROPY_LABEL);
 	if (!entropy) {
 		return -ENODEV;
 	}
@@ -1195,7 +1195,7 @@ void ull_conn_done(struct node_rx_event_done *done)
 	}
 #endif /* CONFIG_BT_CTLR_LE_PING */
 
-#if defined(CONFIG_BT_CTLR_CONN_RSSI)
+#if defined(CONFIG_BT_CTLR_CONN_RSSI_EVENT)
 	/* generate RSSI event */
 	if (lll->rssi_sample_count == 0) {
 		struct node_rx_pdu *rx;
@@ -1219,12 +1219,13 @@ void ull_conn_done(struct node_rx_event_done *done)
 			ll_rx_sched();
 		}
 	}
-#endif /* CONFIG_BT_CTLR_CONN_RSSI */
+#endif /* CONFIG_BT_CTLR_CONN_RSSI_EVENT */
 
 	/* break latency based on ctrl procedure pending */
-	if ((((conn->llcp_req - conn->llcp_ack) & 0x03) == 0x02) &&
-	    ((conn->llcp_type == LLCP_CONN_UPD) ||
-	     (conn->llcp_type == LLCP_CHAN_MAP))) {
+	if (((((conn->llcp_req - conn->llcp_ack) & 0x03) == 0x02) &&
+	     ((conn->llcp_type == LLCP_CONN_UPD) ||
+	      (conn->llcp_type == LLCP_CHAN_MAP))) ||
+	    (conn->llcp_cu.req != conn->llcp_cu.ack)) {
 		lll->latency_event = 0;
 	}
 
@@ -4501,8 +4502,7 @@ static inline int length_req_rsp_recv(struct ll_conn *conn, memq_link_t *link,
 	if (/* Local idle, and Peer request then complete the Peer procedure
 	     * with response.
 	     */
-	    ((conn->llcp_length.req == conn->llcp_length.ack) &&
-	     (pdu_rx->llctrl.opcode == PDU_DATA_LLCTRL_TYPE_LENGTH_REQ)) ||
+	    ((conn->llcp_length.req == conn->llcp_length.ack) && tx) ||
 	    /* or Local has active... */
 	    ((conn->llcp_length.req != conn->llcp_length.ack) &&
 	     /* with Local requested and Peer request then complete the
@@ -4510,17 +4510,12 @@ static inline int length_req_rsp_recv(struct ll_conn *conn, memq_link_t *link,
 	      */
 	     ((((conn->llcp_length.state == LLCP_LENGTH_STATE_REQ) ||
 		(conn->llcp_length.state == LLCP_LENGTH_STATE_REQ_ACK_WAIT)) &&
-	       (pdu_rx->llctrl.opcode ==
-		PDU_DATA_LLCTRL_TYPE_LENGTH_REQ)) ||
+	       tx) ||
 	      /* with Local waiting for response, and Peer response then
 	       * complete the Local procedure or Peer request then complete the
 	       * Peer procedure with response.
 	       */
-	      ((conn->llcp_length.state == LLCP_LENGTH_STATE_RSP_WAIT) &&
-	       ((pdu_rx->llctrl.opcode ==
-		 PDU_DATA_LLCTRL_TYPE_LENGTH_RSP) ||
-		(pdu_rx->llctrl.opcode ==
-		 PDU_DATA_LLCTRL_TYPE_LENGTH_REQ)))))) {
+	      (conn->llcp_length.state == LLCP_LENGTH_STATE_RSP_WAIT)))) {
 		struct pdu_data_llctrl_length_req *lr;
 		u16_t max_rx_octets;
 		u16_t max_tx_octets;
@@ -4684,9 +4679,20 @@ static inline int length_req_rsp_recv(struct ll_conn *conn, memq_link_t *link,
 #endif /* CONFIG_BT_CTLR_PHY */
 		}
 	} else {
-		/* Drop response with no Local initiated request. */
-		LL_ASSERT(pdu_rx->llctrl.opcode ==
-			  PDU_DATA_LLCTRL_TYPE_LENGTH_RSP);
+		/* Drop response with no Local initiated request and duplicate
+		 * requests.
+		 */
+		if (pdu_rx->llctrl.opcode != PDU_DATA_LLCTRL_TYPE_LENGTH_RSP) {
+			mem_release(tx, &mem_conn_tx_ctrl.free);
+
+			/* Defer new request if previous in resize state */
+			if (conn->llcp_length.state ==
+			    LLCP_LENGTH_STATE_RESIZE) {
+				return -EBUSY;
+			}
+		}
+
+		return 0;
 	}
 
 send_length_resp:

@@ -5,16 +5,17 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#define DT_DRV_COMPAT xlnx_ttcps
+
 #include <soc.h>
 #include <drivers/timer/system_timer.h>
 #include "xlnx_psttc_timer_priv.h"
 
 #define TIMER_INDEX		CONFIG_XLNX_PSTTC_TIMER_INDEX
-#define TIMER_DT(v)		UTIL_CAT(UTIL_CAT(DT_INST_, TIMER_INDEX), _##v)
 
-#define TIMER_IRQ		TIMER_DT(XLNX_TTCPS_IRQ_0)
-#define TIMER_BASE_ADDR		TIMER_DT(XLNX_TTCPS_BASE_ADDRESS)
-#define TIMER_CLOCK_FREQUECY	TIMER_DT(XLNX_TTCPS_CLOCK_FREQUENCY)
+#define TIMER_IRQ		DT_INST_IRQN(0)
+#define TIMER_BASE_ADDR		DT_INST_REG_ADDR(0)
+#define TIMER_CLOCK_FREQUECY	DT_INST_PROP(0, clock_frequency)
 
 #define TICKS_PER_SEC		CONFIG_SYS_CLOCK_TICKS_PER_SEC
 #define CYCLES_PER_SEC		TIMER_CLOCK_FREQUECY
@@ -28,18 +29,18 @@
 #define CYCLES_NEXT_MIN		(10000)
 #define CYCLES_NEXT_MAX		(XTTC_MAX_INTERVAL_COUNT)
 
-BUILD_ASSERT_MSG(TIMER_DT(XLNX_TTCPS_CLOCK_FREQUENCY) ==
+BUILD_ASSERT(TIMER_CLOCK_FREQUECY ==
 			CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC,
-		 "Configured system timer frequency does not match the TTC "
-		 "clock frequency in the device tree");
+	     "Configured system timer frequency does not match the TTC "
+	     "clock frequency in the device tree");
 
-BUILD_ASSERT_MSG(CYCLES_PER_SEC >= TICKS_PER_SEC,
-		 "Timer clock frequency must be greater than the system tick "
-		 "frequency");
+BUILD_ASSERT(CYCLES_PER_SEC >= TICKS_PER_SEC,
+	     "Timer clock frequency must be greater than the system tick "
+	     "frequency");
 
-BUILD_ASSERT_MSG((CYCLES_PER_SEC % TICKS_PER_SEC) == 0,
-		 "Timer clock frequency is not divisible by the system tick "
-		 "frequency");
+BUILD_ASSERT((CYCLES_PER_SEC % TICKS_PER_SEC) == 0,
+	     "Timer clock frequency is not divisible by the system tick "
+	     "frequency");
 
 #ifdef CONFIG_TICKLESS_KERNEL
 static u32_t last_cycles;
@@ -161,7 +162,7 @@ void z_clock_set_timeout(s32_t ticks, bool idle)
 	cycles = read_count();
 
 	/* Calculate timeout counter value */
-	if (ticks == K_FOREVER) {
+	if (ticks == K_TICKS_FOREVER) {
 		next_cycles = cycles + CYCLES_NEXT_MAX;
 	} else {
 		next_cycles = cycles + ((u32_t)ticks * CYCLES_PER_TICK);

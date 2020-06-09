@@ -8,18 +8,6 @@ if BOARD_ADAFRUIT_FEATHER_NRF52840
 config BOARD
 	default "adafruit_feather_nrf52840"
 
-config ADC_0
-	default y
-	depends on ADC
-
-config I2C_0
-	default y
-	depends on I2C
-
-config SPI_1
-	default y
-	depends on SPI
-
 if USB
 
 config USB_NRFX

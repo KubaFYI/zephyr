@@ -78,7 +78,7 @@ need one.
 
          sudo apt-get install --no-install-recommends git cmake ninja-build gperf \
            ccache dfu-util device-tree-compiler wget \
-           python3-pip python3-setuptools python3-tk python3-wheel xz-utils file \
+           python3-dev python3-pip python3-setuptools python3-tk python3-wheel xz-utils file \
            make gcc gcc-multilib g++-multilib libsdl2-dev
 
    .. group-tab:: Fedora
@@ -233,7 +233,9 @@ following target architectures:
 
 Follow these steps to install the Zephyr SDK:
 
-#. Download the latest SDK as a self-extracting installation binary:
+#. Download the `latest SDK
+   <https://github.com/zephyrproject-rtos/sdk-ng/releases>`_ as a
+   self-extracting installation binary:
 
    .. code-block:: console
 
@@ -280,8 +282,7 @@ As already noted above, the SDK also includes prebuilt host tools.  To use the
 SDK's prebuilt host tools with a toolchain from another source, keep the
 :envvar:`ZEPHYR_SDK_INSTALL_DIR` environment variable set to the Zephyr SDK
 installation directory. To build without the Zephyr SDK's prebuilt host tools,
-the :envvar:`ZEPHYR_SDK_INSTALL_DIR` environment variable must be unset before
-you run ``source zephyr-env.sh`` later on in the Getting Started Guide.
+the :envvar:`ZEPHYR_SDK_INSTALL_DIR` environment variable must be unset.
 
 To make sure this variable is unset, run:
 
