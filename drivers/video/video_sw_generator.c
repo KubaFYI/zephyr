@@ -100,7 +100,8 @@ static void __buffer_work(struct k_work *work)
 
 	data = CONTAINER_OF(work, struct video_sw_generator_data, buf_work);
 
-	k_delayed_work_submit(&data->buf_work, 1000 / VIDEO_PATTERN_FPS);
+	k_delayed_work_submit(&data->buf_work,
+			      K_MSEC(1000 / VIDEO_PATTERN_FPS));
 
 	vbuf = k_fifo_get(&data->fifo_in, K_NO_WAIT);
 	if (vbuf == NULL) {
@@ -139,7 +140,8 @@ static int video_sw_generator_enqueue(struct device *dev,
 
 static int video_sw_generator_dequeue(struct device *dev,
 				      enum video_endpoint_id ep,
-				      struct video_buffer **vbuf, u32_t timeout)
+				      struct video_buffer **vbuf,
+				      k_timeout_t timeout)
 {
 	struct video_sw_generator_data *data = dev->driver_data;
 
@@ -273,5 +275,5 @@ static int video_sw_generator_init(struct device *dev)
 
 DEVICE_AND_API_INIT(video_sw_generator, "VIDEO_SW_GENERATOR",
 		    &video_sw_generator_init, &video_sw_generator_data_0, NULL,
-		    POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEVICE,
+		    POST_KERNEL, CONFIG_VIDEO_INIT_PRIORITY,
 		    &video_sw_generator_driver_api);

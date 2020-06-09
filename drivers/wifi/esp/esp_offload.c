@@ -258,7 +258,7 @@ static int _sock_send(struct esp_data *dev, struct esp_socket *sock)
 	k_sem_give(&dev->iface_data.rx_sem);
 
 	/* Wait for '>' */
-	ret = k_sem_take(&dev->sem_tx_ready, 5000);
+	ret = k_sem_take(&dev->sem_tx_ready, K_MSEC(5000));
 	if (ret < 0) {
 		LOG_DBG("Timeout waiting for tx");
 		goto out;
@@ -586,7 +586,7 @@ static int esp_recv(struct net_context *context,
 		return 0;
 	}
 
-	ret = k_sem_take(&sock->sem_data_ready, timeout);
+	ret = k_sem_take(&sock->sem_data_ready, K_MSEC(timeout));
 
 	sock->recv_cb = NULL;
 

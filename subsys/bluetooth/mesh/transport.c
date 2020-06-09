@@ -58,12 +58,12 @@
  * We use 400 since 300 is a common send duration for standard HCI, and we
  * need to have a timeout that's bigger than that.
  */
-#define SEG_RETRANSMIT_TIMEOUT_UNICAST(tx) (K_MSEC(400) + 50 * (tx)->ttl)
+#define SEG_RETRANSMIT_TIMEOUT_UNICAST(tx) (400 + 50 * (tx)->ttl)
 /* When sending to a group, the messages are not acknowledged, and there's no
  * reason to delay the repetitions significantly. Delaying by more than 0 ms
  * to avoid flooding the network.
  */
-#define SEG_RETRANSMIT_TIMEOUT_GROUP K_MSEC(50)
+#define SEG_RETRANSMIT_TIMEOUT_GROUP 50
 
 #define SEG_RETRANSMIT_TIMEOUT(tx)                                             \
 	(BT_MESH_ADDR_IS_UNICAST(tx->dst) ?                                    \
@@ -232,7 +232,7 @@ static void seg_tx_unblock_check(struct seg_tx *tx)
 		BT_DBG("Unblocked 0x%04x",
 		       (u16_t)(blocked->seq_auth & TRANS_SEQ_ZERO_MASK));
 		blocked->blocked = false;
-		k_delayed_work_submit(&blocked->retransmit, 0);
+		k_delayed_work_submit(&blocked->retransmit, K_NO_WAIT);
 	}
 }
 
@@ -317,8 +317,8 @@ static void schedule_retransmit(struct seg_tx *tx)
 	 */
 	k_delayed_work_submit(&tx->retransmit,
 			      (tx->sending || !tx->seg_o) ?
-				      SEG_RETRANSMIT_TIMEOUT(tx) :
-				      0);
+				      K_MSEC(SEG_RETRANSMIT_TIMEOUT(tx)) :
+				      K_NO_WAIT);
 }
 
 static void seg_send_start(u16_t duration, int err, void *user_data)
@@ -406,8 +406,7 @@ static void seg_tx_send_unacked(struct seg_tx *tx)
 					 BUF_TIMEOUT);
 		if (!seg) {
 			BT_DBG("Allocating segment failed");
-			tx->sending = 0U;
-			return;
+			goto end;
 		}
 
 		net_buf_reserve(seg, BT_MESH_NET_HDR_LEN);
@@ -421,13 +420,19 @@ static void seg_tx_send_unacked(struct seg_tx *tx)
 		if (err) {
 			BT_DBG("Sending segment failed");
 			tx->seg_pending--;
-			tx->sending = 0U;
-			return;
+			goto end;
 		}
 	}
 
-	tx->sending = 0U;
 	tx->seg_o = 0U;
+
+end:
+	if (!tx->seg_pending) {
+		k_delayed_work_submit(&tx->retransmit,
+				      K_MSEC(SEG_RETRANSMIT_TIMEOUT(tx)));
+	}
+
+	tx->sending = 0U;
 	tx->attempts--;
 }
 
@@ -1250,15 +1255,15 @@ static inline s32_t ack_timeout(struct seg_rx *rx)
 	/* The acknowledgment timer shall be set to a minimum of
 	 * 150 + 50 * TTL milliseconds.
 	 */
-	to = K_MSEC(150 + (ttl * 50U));
+	to = 150 + (ttl * 50U);
 
 	/* 100 ms for every not yet received segment */
-	to += K_MSEC(((rx->seg_n + 1) - popcount(rx->block)) * 100U);
+	to += ((rx->seg_n + 1) - popcount(rx->block)) * 100U;
 
 	/* Make sure we don't send more frequently than the duration for
 	 * each packet (default is 300ms).
 	 */
-	return MAX(to, K_MSEC(400));
+	return MAX(to, 400);
 }
 
 int bt_mesh_ctl_send(struct bt_mesh_net_tx *tx, u8_t ctl_op, void *data,
@@ -1342,6 +1347,10 @@ static void seg_rx_reset(struct seg_rx *rx, bool full_reset)
 	}
 
 	for (i = 0; i <= rx->seg_n; i++) {
+		if (!rx->seg[i]) {
+			continue;
+		}
+
 		k_mem_slab_free(&segs, &rx->seg[i]);
 		rx->seg[i] = NULL;
 	}
@@ -1366,7 +1375,7 @@ static void seg_ack(struct k_work *work)
 
 	BT_DBG("rx %p", rx);
 
-	if (k_uptime_get_32() - rx->last > K_SECONDS(60)) {
+	if (k_uptime_get_32() - rx->last > (60 * MSEC_PER_SEC)) {
 		BT_WARN("Incomplete timer expired");
 		seg_rx_reset(rx, false);
 
@@ -1380,7 +1389,7 @@ static void seg_ack(struct k_work *work)
 	send_ack(rx->sub, rx->dst, rx->src, rx->ttl, &rx->seq_auth,
 		 rx->block, rx->obo);
 
-	k_delayed_work_submit(&rx->ack, ack_timeout(rx));
+	k_delayed_work_submit(&rx->ack, K_MSEC(ack_timeout(rx)));
 }
 
 static inline bool sdu_len_is_ok(bool ctl, u8_t seg_n)
@@ -1450,12 +1459,12 @@ static struct seg_rx *seg_rx_alloc(struct bt_mesh_net_rx *net_rx,
 				   const u8_t *hdr, const u64_t *seq_auth,
 				   u8_t seg_n)
 {
-	int i, j;
+	int i;
 
 	/* No race condition on this check, as this function only executes in
 	 * the collaborative Bluetooth rx thread:
 	 */
-	if (k_mem_slab_num_free_get(&segs) < seg_n) {
+	if (k_mem_slab_num_free_get(&segs) < 1) {
 		BT_WARN("Not enough segments for incoming message");
 		return NULL;
 	}
@@ -1477,14 +1486,6 @@ static struct seg_rx *seg_rx_alloc(struct bt_mesh_net_rx *net_rx,
 		rx->src = net_rx->ctx.addr;
 		rx->dst = net_rx->ctx.recv_dst;
 		rx->block = 0U;
-
-		/* Allocating everything at the beginning to avoid any failures
-		 * after initial rx. Could reduce overall buffer usage by
-		 * allocating as we go?
-		 */
-		for (j = 0; j <= seg_n; j++) {
-			k_mem_slab_alloc(&segs, &rx->seg[j], K_NO_WAIT);
-		}
 
 		BT_DBG("New RX context. Block Complete 0x%08x",
 		       BLOCK_COMPLETE(seg_n));
@@ -1670,7 +1671,14 @@ found_rx:
 
 	if (!k_delayed_work_remaining_get(&rx->ack) &&
 	    !bt_mesh_lpn_established()) {
-		k_delayed_work_submit(&rx->ack, ack_timeout(rx));
+		k_delayed_work_submit(&rx->ack, K_MSEC(ack_timeout(rx)));
+	}
+
+	/* Allocated segment here */
+	err = k_mem_slab_alloc(&segs, &rx->seg[seg_o], K_NO_WAIT);
+	if (err) {
+		BT_WARN("Unable allocate buffer for Seg %u", seg_o);
+		return -ENOBUFS;
 	}
 
 	memcpy(rx->seg[seg_o], buf->data, buf->len);

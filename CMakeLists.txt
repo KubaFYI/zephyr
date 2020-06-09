@@ -472,6 +472,7 @@ if(EXISTS ${CMAKE_BINARY_DIR}/zephyr_modules.txt)
 
     string(TOUPPER ${module_name} MODULE_NAME_UPPER)
     set(ZEPHYR_${MODULE_NAME_UPPER}_MODULE_DIR ${module_path})
+    set(ZEPHYR_${MODULE_NAME_UPPER}_MODULE_DIR ${module_path} PARENT_SCOPE)
   endforeach()
 
   foreach(module_name ${module_names})
@@ -604,6 +605,10 @@ if(CONFIG_64BIT)
   set(SYSCALL_LONG_REGISTERS_ARG --long-registers)
 endif()
 
+if(CONFIG_TIMEOUT_64BIT)
+  set(SYSCALL_SPLIT_TIMEOUT_ARG --split-type k_timeout_t)
+endif()
+
 add_custom_command(OUTPUT include/generated/syscall_dispatch.c ${syscall_list_h}
   # Also, some files are written to include/generated/syscalls/
   COMMAND
@@ -614,8 +619,10 @@ add_custom_command(OUTPUT include/generated/syscall_dispatch.c ${syscall_list_h}
   --syscall-dispatch include/generated/syscall_dispatch.c # Write this file
   --syscall-list     ${syscall_list_h}
   ${SYSCALL_LONG_REGISTERS_ARG}
+  ${SYSCALL_SPLIT_TIMEOUT_ARG}
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS ${PARSE_SYSCALLS_TARGET}
+  ${syscalls_json}
   )
 
 # This is passed into all calls to the gen_kobject_list.py script.
@@ -633,11 +640,12 @@ add_custom_command(
   DEPENDS
   ${ZEPHYR_BASE}/scripts/gen_kobject_list.py
   ${PARSE_SYSCALLS_TARGET}
+  ${subsys_json}
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
   )
 add_custom_target(${DRIVER_VALIDATION_H_TARGET} DEPENDS ${DRV_VALIDATION})
 
-include($ENV{ZEPHYR_BASE}/cmake/kobj.cmake)
+include(${ZEPHYR_BASE}/cmake/kobj.cmake)
 gen_kobj(KOBJ_INCLUDE_PATH)
 
 # Add a pseudo-target that is up-to-date when all generated headers
@@ -811,7 +819,6 @@ if(CONFIG_USERSPACE)
     $<$<BOOL:${CMAKE_VERBOSE_MAKEFILE}>:--verbose>
     DEPENDS
     ${ZEPHYR_PREBUILT_EXECUTABLE}
-    ${PARSE_SYSCALLS_TARGET}
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
     )
   add_custom_target(obj_list DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${OBJ_LIST})
@@ -1207,10 +1214,15 @@ endif()
 if(CONFIG_OUTPUT_DISASSEMBLY)
   set(out_disassembly_cmd    "")
   set(out_disassembly_byprod "")
+  if(CONFIG_OUTPUT_DISASSEMBLE_ALL)
+    set(disassembly_type DISASSEMBLE_ALL)
+  else()
+    set(disassembly_type DISASSEMBLE_SOURCE)
+  endif()
   bintools_objdump(
     RESULT_CMD_LIST    out_disassembly_cmd
     RESULT_BYPROD_LIST out_disassembly_byprod
-    DISASSEMBLE_SOURCE
+    ${disassembly_type}
     FILE_INPUT         ${KERNEL_ELF_NAME}
     FILE_OUTPUT        ${KERNEL_LST_NAME}
     )

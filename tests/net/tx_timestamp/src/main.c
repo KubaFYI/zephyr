@@ -39,7 +39,7 @@ LOG_MODULE_REGISTER(net_test, NET_LOG_LEVEL);
 #define DBG(fmt, ...)
 #endif
 
-#define PORT 9999
+#define TEST_PORT 9999
 
 static char *test_data = "Test data to be sent";
 
@@ -152,12 +152,12 @@ static int eth_init(struct device *dev)
 	return 0;
 }
 
-ETH_NET_DEVICE_INIT(eth_test, "eth_test", eth_init, &eth_context,
-		    NULL, CONFIG_ETH_INIT_PRIORITY, &api_funcs,
+ETH_NET_DEVICE_INIT(eth_test, "eth_test", eth_init, device_pm_control_nop,
+		    &eth_context, NULL, CONFIG_ETH_INIT_PRIORITY, &api_funcs,
 		    NET_ETH_MTU);
 
-ETH_NET_DEVICE_INIT(eth_test2, "eth_test2", eth_init, &eth_context2,
-		    NULL, CONFIG_ETH_INIT_PRIORITY, &api_funcs,
+ETH_NET_DEVICE_INIT(eth_test2, "eth_test2", eth_init, device_pm_control_nop,
+		    &eth_context2, NULL, CONFIG_ETH_INIT_PRIORITY, &api_funcs,
 		    NET_ETH_MTU);
 
 static void timestamp_callback(struct net_pkt *pkt)
@@ -428,7 +428,7 @@ static void send_some_data(struct net_if *iface)
 {
 	struct sockaddr_in6 dst_addr6 = {
 		.sin6_family = AF_INET6,
-		.sin6_port = htons(PORT),
+		.sin6_port = htons(TEST_PORT),
 	};
 	struct sockaddr_in6 src_addr6 = {
 		.sin6_family = AF_INET6,

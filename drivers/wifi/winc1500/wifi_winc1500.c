@@ -401,7 +401,7 @@ static int winc1500_connect(struct net_context *context,
 	}
 
 	if (timeout != 0 &&
-	    k_sem_take(&w1500_data.socket_data[socket].wait_sem, timeout)) {
+	    k_sem_take(&w1500_data.socket_data[socket].wait_sem, K_MSEC(timeout))) {
 		return -ETIMEDOUT;
 	}
 
@@ -1113,6 +1113,6 @@ static int winc1500_init(struct device *dev)
 }
 
 NET_DEVICE_OFFLOAD_INIT(winc1500, CONFIG_WIFI_WINC1500_NAME,
-			winc1500_init, &w1500_data, NULL,
+			winc1500_init, device_pm_control_nop, &w1500_data, NULL,
 			CONFIG_WIFI_INIT_PRIORITY, &winc1500_api,
 			CONFIG_WIFI_WINC1500_MAX_PACKET_SIZE);
