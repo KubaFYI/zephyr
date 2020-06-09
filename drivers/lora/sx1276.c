@@ -144,7 +144,6 @@ static void timer_callback(struct k_timer *_timer)
 
 	TimerIrqHandler();
 }
-#endif
 
 void RtcSetAlarm(u32_t timeout)
 {
@@ -157,7 +156,6 @@ u32_t RtcSetTimerContext(void)
 
 	return saved_time;
 }
-
 
 /* For us, 1 tick = 1 milli second. So no need to do any conversion here */
 u32_t RtcGetTimerContext(void)
@@ -185,28 +183,6 @@ static void sx1276_dio_work_handle(struct k_work *work)
 	int dio = work - dev_data.dio_work;
 
 	(*DioIrq[dio])(NULL);
-}
-
-u32_t RtcGetCalendarTime(uint16_t *milliseconds)
-{
-	u32_t now = k_uptime_get_32();
-
-	*milliseconds = now;
-
-	/* Return in seconds */
-	return now / MSEC_PER_SEC;
-}
-
-void RtcBkupWrite(u32_t data0, uint32_t data1)
-{
-	dev_data.backup_reg[0] = data0;
-	dev_data.backup_reg[1] = data1;
-}
-
-void RtcBkupRead(u32_t *data0, uint32_t *data1)
-{
-	*data0 = dev_data.backup_reg[0];
-	*data1 = dev_data.backup_reg[1];
 }
 
 u32_t RtcGetCalendarTime(uint16_t *milliseconds)
