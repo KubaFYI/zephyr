@@ -73,11 +73,17 @@ void main(void)
 		return;
 	}
 
+	ret = -1;
+	
+	while (ret < 0) {
 	LOG_INF("Joining network over OTAA");
 	ret = lorawan_join_network(LORAWAN_DEFAULT_DATARATE, LORAWAN_ACT_OTAA);
 	if (ret < 0) {
 		LOG_ERR("lorawan_join_network failed: %d", ret);
-		return;
+		k_sleep(K_MSEC(3000));
+	} else {
+		break;
+	}
 	}
 
 	while (1) {
@@ -105,7 +111,7 @@ void main(void)
 		k_sleep(1000);
 
 		dl_msgs_no = lorawan_receive_available();
-		if (dl_msgs_no > 0) {
+		if (dl_msgs_no >= 0) {
 			LOG_INF("%d downlink msgs available", dl_msgs_no);
 			for (i=0; i<dl_msgs_no; i++){
 				ret = lorawan_receive_read(&port, dl_msg, DL_MSG_LEN-1);

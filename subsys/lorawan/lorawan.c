@@ -39,11 +39,14 @@
 	#error "Atleast one LoRaWAN region should be selected"
 #endif
 
-#define CEIL_32(x) ((unsigned int)(((((x))+31U)/32U)*32U))
+#define MIN(a, b) ((a)<=(b)?(a):(b))
 
-#define LORAWAN_PLD_MAX_SIZE		242U
-#define LORAWAN_PLD_MAX_SIZE_CEIL_32_B	CEIL_32(LORAWAN_PLD_MAX_SIZE)
-#define LORAWAN_PLD_MAX_SIZE_CEIL_32	(LORAWAN_PLD_MAX_SIZE_CEIL_32_B/4)
+#define CEIL_32(x) ((unsigned int)(((((x))+31U)/32U)*32U))
+#define SIZE_BYTES_TO_WORDS(x) (CEIL_32(x*8)/32)
+
+
+#define LORAWAN_PLD_MAX_SIZE_BYTES	242U
+#define LORAWAN_PLD_MAX_SIZE_WORDS	SIZE_BYTES_TO_WORDS(LORAWAN_PLD_MAX_SIZE_BYTES)
 
 #define LOG_LEVEL CONFIG_LORAWAN_LOG_LEVEL
 #include <logging/log.h>
@@ -67,7 +70,7 @@ struct rx_ring_buf rx_buf;
 
 #else
 
-uint8_t rx_buffer[LORAWAN_PLD_MAX_SIZE];
+uint8_t rx_buffer[LORAWAN_PLD_MAX_SIZE_BYTES];
 uint8_t rx_buffer_stored_len;
 uint8_t rx_buffer_port;
 
@@ -76,8 +79,8 @@ uint8_t rx_buffer_port;
 static uint16_t rx_buf_avail_elem;
 static uint16_t rx_buf_discarded_elem;
 #if CONFIG_LORAWAN_USE_RX_RING_BUFFER
-static uint32_t payload_tmp[LORAWAN_PLD_MAX_SIZE_CEIL_32];
-static uint8_t payload_tmp_size = LORAWAN_PLD_MAX_SIZE_CEIL_32;
+static uint32_t payload_tmp[LORAWAN_PLD_MAX_SIZE_WORDS];
+static uint8_t payload_tmp_size = LORAWAN_PLD_MAX_SIZE_WORDS;
 #endif
 const char *status2str(int status)
 {
@@ -262,10 +265,10 @@ static int rx_buf_get(u8_t *port, u8_t *payload, u16_t len)
 	int ret;
 	u16_t rx_buffer_stored_len;
 
-	payload_tmp_size = LORAWAN_PLD_MAX_SIZE_CEIL_32;
+	payload_tmp_size = LORAWAN_PLD_MAX_SIZE_WORDS;
 	ret = ring_buf_item_get(&rx_buf.rb, &rx_buffer_stored_len,
 				port, payload_tmp, &payload_tmp_size);
-	payload_tmp_size = LORAWAN_PLD_MAX_SIZE_CEIL_32;
+	payload_tmp_size = LORAWAN_PLD_MAX_SIZE_WORDS;
 
 	if ( ret < 0 ) {
 		return ret;
@@ -300,35 +303,41 @@ static int rx_buf_get(u8_t *port, u8_t *payload, u16_t len)
 */
 static int rx_buf_put(u8_t port, u8_t *payload, u16_t len)
 {
-
 #if CONFIG_LORAWAN_USE_RX_RING_BUFFER
 	int ret;
+	u16_t type_tmp;
+	u8_t val_tmp;
 	memcpy(payload_tmp, payload, len);
 
 	ret = ring_buf_item_put(&rx_buf.rb, len, port, payload_tmp,
-				CEIL_32(len)/4);
+				SIZE_BYTES_TO_WORDS(len));
+
 	while (ret == -EMSGSIZE) {
 		/* not enough room for the data item -> remove the oldes one */
-		payload_tmp_size = LORAWAN_PLD_MAX_SIZE_CEIL_32;
-		ret = ring_buf_item_get(&rx_buf.rb, NULL, NULL, payload_tmp,
+		payload_tmp_size = LORAWAN_PLD_MAX_SIZE_WORDS;
+		ret = ring_buf_item_get(&rx_buf.rb, &type_tmp, &val_tmp, payload_tmp,
 					&payload_tmp_size);
-		payload_tmp_size = LORAWAN_PLD_MAX_SIZE_CEIL_32;
 		if (ret == -EAGAIN) {
 			/* Buffer doesn't have any items -> the one we are
 			 * trying to add won't fit any way. */
 			return -EMSGSIZE;
 		}
+		LOG_DBG("Discarded ring buff elemem size %d", payload_tmp_size);
+		rx_buf_avail_elem--;
 		rx_buf_discarded_elem++;
+		payload_tmp_size = LORAWAN_PLD_MAX_SIZE_WORDS;
 
 		memcpy(payload_tmp, payload, len);
 
 		ret = ring_buf_item_put(&rx_buf.rb, len, port, payload_tmp,
-					CEIL_32(len)/4);
+					SIZE_BYTES_TO_WORDS(len));
 	}
+
 
 	rx_buf_avail_elem++;
 #else
 	memcpy(rx_buffer, payload, len);
+
 	rx_buf_avail_elem = 1;
 	rx_buffer_port = port;
 	rx_buffer_stored_len = len;
@@ -387,6 +396,7 @@ static void McpsConfirm(McpsConfirm_t *mcpsConfirm)
 
 static void McpsIndication(McpsIndication_t *mcpsIndication)
 {
+	int ret;
 	LOG_DBG("Received McpsIndication %d", mcpsIndication->McpsIndication);
 
 	if (mcpsIndication->Status != LORAMAC_EVENT_INFO_STATUS_OK) {
@@ -403,22 +413,19 @@ static void McpsIndication(McpsIndication_t *mcpsIndication)
 				mcpsIndication->BufferSize,
 				log_strdup(mcpsIndication->Buffer));
 
-			rx_buf_put(mcpsIndication->Port, mcpsIndication->Buffer,
-				   mcpsIndication->BufferSize);
+			ret = rx_buf_put(mcpsIndication->Port,
+				mcpsIndication->Buffer,
+				mcpsIndication->BufferSize);
+			if (ret == -EMSGSIZE) {
+				LOG_WRN("Rx buff too small for DL size %d",
+					mcpsIndication->BufferSize);
+			}
 		}
 	}
 
 	last_mcps_indication_status = mcpsIndication->Status;
 
 	/* TODO: Compliance test based on FPort value*/
-    LOG_DBG("Multicast: %d (0x%x)", mcpsIndication->Multicast, mcpsIndication->Multicast);
-    LOG_DBG("Port: %d (0x%x)", mcpsIndication->Port, mcpsIndication->Port);
-    LOG_DBG("FramePending: %d (0x%x)", mcpsIndication->FramePending, mcpsIndication->FramePending);
-    LOG_DBG("RxData: %d (0x%x)", mcpsIndication->RxData, mcpsIndication->RxData);
-    LOG_DBG("Rssi: %d (0x%x)", mcpsIndication->Rssi, mcpsIndication->Rssi);
-    LOG_DBG("Snr: %d (0x%x)", mcpsIndication->Snr, mcpsIndication->Snr);
-    LOG_DBG("AckReceived: %d (0x%x)", mcpsIndication->AckReceived, mcpsIndication->AckReceived);
-    LOG_DBG("DeviceTimeAnsReceived: %d (0x%x)", mcpsIndication->DeviceTimeAnsReceived, mcpsIndication->DeviceTimeAnsReceived);
 }
 
 static void MlmeConfirm(MlmeConfirm_t *mlmeConfirm)
@@ -658,7 +665,7 @@ static int lorawan_init(struct device *dev)
 
 
 #if CONFIG_LORAWAN_USE_RX_RING_BUFFER
-	ring_buf_init(&rx_buf.rb, sizeof(rx_buf.buffer), rx_buf.buffer);
+	ring_buf_init(&rx_buf.rb, RX_RING_BUF_SIZE_WORDS, rx_buf.buffer);
 #endif
 
 	rx_buf_avail_elem = 0;
