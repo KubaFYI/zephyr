@@ -1,0 +1,80 @@
+# LoRaWAN configuration options
+
+# Copyright (c) 2019 Manivannan Sadhasivam <mani@kernel.org>
+# SPDX-License-Identifier: Apache-2.0
+
+menuconfig LORAWAN
+	bool "LoRaWAN support [EXPERIMENTAL]"
+	depends on LORA
+	select HAS_SEMTECH_LORAMAC
+	select HAS_SEMTECH_SOFT_SE
+	help
+	  This option enables LoRaWAN support.
+
+if LORAWAN
+
+module = LORAWAN
+module-str = lorawan
+source "subsys/logging/Kconfig.template.log_config"
+
+choice
+	prompt "LoRaWAN Region Selection"
+	default LORAMAC_REGION_IN865
+	help
+	  Select the LoRaWAN region.
+
+config LORAMAC_REGION_AS923
+	bool "Asia 923MHz Frequency band"
+
+config LORAMAC_REGION_AU915
+	bool "Australia 915MHz Frequency band"
+
+config LORAMAC_REGION_CN470
+	bool "China 470MHz Frequency band"
+
+config LORAMAC_REGION_CN779
+	bool "China 779MHz Frequency band"
+
+config LORAMAC_REGION_EU433
+	bool "Europe 433MHz Frequency band"
+
+config LORAMAC_REGION_EU868
+	bool "Europe 868MHz Frequency band"
+
+config LORAMAC_REGION_KR920
+	bool "South Korea 920MHz Frequency band"
+
+config LORAMAC_REGION_IN865
+	bool "India 865MHz Frequency band"
+
+config LORAMAC_REGION_US915
+	bool "North America 915MHz Frequency band"
+
+config LORAMAC_REGION_RU864
+	bool "Russia 864MHz Frequency band"
+
+endchoice
+
+config LORAWAN_USE_RX_RING_BUFFER
+	bool "Use Ring Buffer for Downlink"
+	default False
+	depends on RING_BUFFER
+	help
+	  This value enables a ring buffer to be used for storing incoming
+	  downlink messages instead of only the latest message being available.
+	  Oldest messages are discarded in case of incoming payload not having
+	  enough space in the buffer.
+
+if LORAWAN_USE_RX_RING_BUFFER
+
+config LORAWAN_RX_RING_BUFFER_MAX_SIZE_WORDS
+	int "Downlink Ring Buffer Size in 32-bit words"
+	default 8
+	help
+	  This value defines the maximum number 32-bit words used in a buffer
+	  for downlink messages. Must be at least N+2 where N is the largest
+	  expected downlink payload in 32-bit chunks.
+
+endif # LORAWAN_USE_RX_RING_BUFFER
+
+endif # LORAWAN
