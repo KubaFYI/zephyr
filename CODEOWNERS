@@ -351,6 +351,7 @@
 /include/posix/                           @pfalcon
 /include/power/power.h                    @wentongwu @nashif
 /include/ptp_clock.h                      @jukkar
+/include/sdi_12/                          @KubaFYI
 /include/shared_irq.h                     @andrewboie @andyross
 /include/shell/                           @jakub-uC @nordic-krch
 /include/sw_isr_table.h                   @andrewboie @andyross
@@ -397,6 +398,7 @@
 /samples/subsys/mgmt/mcumgr/smp_svr/      @aunsbjerg @nvlsianpu
 /samples/subsys/usb/                      @jfischer-phytec-iot @finikorg
 /samples/subsys/power/                    @wentongwu @pabigot
+/samples/subsys/sdi_12/                   @KubaFYI
 /samples/userspace/                       @andrewboie
 /scripts/coccicheck                       @himanshujha199640 @JuliaLawall
 /scripts/coccinelle/                      @himanshujha199640 @JuliaLawall
@@ -465,6 +467,7 @@
 /subsys/net/*/openthread/                 @rlubos
 /subsys/power/                            @wentongwu @pabigot
 /subsys/random/                           @dleach02
+/subsys/sdi_12/                           @KubaFYI
 /subsys/settings/                         @nvlsianpu
 /subsys/shell/                            @jakub-uC @nordic-krch
 /subsys/storage/                          @nvlsianpu

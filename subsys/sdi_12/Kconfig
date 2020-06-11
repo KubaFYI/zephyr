@@ -1,0 +1,27 @@
+#
+# Copyright (c) 2019 R3 IoT Ltd.
+#
+# License: Apache-2.0
+#
+# Configuration file for SDI-12 drivers.
+
+menuconfig SDI_12
+	bool "SDI-12 support"
+	depends on SERIAL
+	help
+	  Include SDI-12 drivers in the system config.
+
+if SDI_12
+
+module = SDI_12
+module-str = SDI-12
+source "subsys/logging/Kconfig.template.log_config"
+
+config SDI_12_INIT_PRIORITY
+	int "SDI-12 initialization priority"
+	default 90
+	help
+	  System initialization priority for SDI-12 drivers.
+
+endif # SDI_12
+
