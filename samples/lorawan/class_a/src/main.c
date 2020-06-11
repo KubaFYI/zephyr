@@ -108,7 +108,7 @@ void main(void)
 		}
 
 		LOG_INF("Data sent!");
-		k_sleep(1000);
+		k_sleep(K_MSEC(1000));
 
 		dl_msgs_no = lorawan_receive_available();
 		if (dl_msgs_no >= 0) {

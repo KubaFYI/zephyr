@@ -39,8 +39,6 @@
 	#error "Atleast one LoRaWAN region should be selected"
 #endif
 
-#define MIN(a, b) ((a)<=(b)?(a):(b))
-
 #define CEIL_32(x) ((unsigned int)(((((x))+31U)/32U)*32U))
 #define SIZE_BYTES_TO_WORDS(x) (CEIL_32(x*8)/32)
 
@@ -640,6 +638,11 @@ int lorawan_receive_available()
 int lorawan_receive_read(u8_t *port, u8_t *data, u8_t len)
 {
 	return rx_buf_get(port, data, len);
+}
+
+int lorawan_receive_discarded()
+{
+	return rx_buf_discarded();
 }
 
 static int lorawan_init(struct device *dev)

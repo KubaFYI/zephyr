@@ -121,6 +121,16 @@ int lorawan_send(u8_t port, enum lorawan_datarate datarate,
 int lorawan_receive_available();
 
 /**
+ * @brief Check if any uncollected received incoming data was discarded
+ *
+ * Check if any uncollected received incoming data was discarded due to
+ * insufficient free space in the RX buffer.
+ *
+ * @return 0 or positive number indicating the number of discarded messages
+ */
+int lorawan_receive_discarded();
+
+/**
  * @brief Read uncollected received data from the LoRaWAN network
  *
  * Read uncollected received data from the LoRaWAN network. This function will
