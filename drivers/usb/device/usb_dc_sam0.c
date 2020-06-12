@@ -546,9 +546,12 @@ int usb_dc_ep_write(u8_t ep, const u8_t *buf, u32_t len, u32_t *ret_bytes)
 		return -1;
 	}
 
-	if (endpoint->EPSTATUS.bit.BK1RDY) {
-		/* Write in progress, drop */
-		return -EAGAIN;
+	s64_t reftime = k_uptime_get();
+	while (endpoint->EPSTATUS.bit.BK1RDY) {
+		// previous transfer is still not complete
+		if ((k_uptime_get() - reftime) >= 1) {
+			return -EAGAIN;
+		}
 	}
 
 	/* Note that this code does not use the hardware's
