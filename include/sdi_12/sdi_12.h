@@ -84,7 +84,7 @@ typedef enum {
 #define SDI_12_INNER_TRY_MIN 3
 #define SDI_12_OUTER_TRY_MIN 3
 
-#define SDI_12_TX_ENABLE_INV
+// #define SDI_12_TX_ENABLE_INV
 
 #ifdef SDI_12_TX_ENABLE_INV
 #define TX_ENABLE_ON 0
