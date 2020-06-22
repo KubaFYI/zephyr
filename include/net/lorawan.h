@@ -77,6 +77,21 @@ struct lorawan_mib_config {
  */
 int lorawan_config(struct lorawan_mib_config *mib_config);
 
+
+/**
+ * @brief Add battery level callback function.
+ *
+ * Provide the LoRaWAN stack with a function to be called whenever a battery
+ * level needs to be read. The function needs to return a value between 0-254
+ * for battery levels and/or 255 when unable to read the battery or no battery
+ * present.
+ *
+ * @param battery_lvl_clbk Pointer to the battery level function
+ *
+ * @return 0 if successful, negative errno code if failure
+ */
+int lorawan_set_battery_level_callback(uint8_t (*battery_lvl_clbk)(void));
+
 /**
  * @brief Join the LoRaWAN network
  *

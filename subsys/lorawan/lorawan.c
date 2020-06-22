@@ -239,6 +239,16 @@ static LoRaMacEventInfoStatus_t last_mlme_confirm_status;
 static LoRaMacEventInfoStatus_t last_mcps_indication_status;
 static LoRaMacEventInfoStatus_t last_mlme_indication_status;
 
+static uint8_t (*getBatteryLevelUser)(void) = NULL;
+
+static uint8_t getBatteryLevelLocal(void)
+{
+	if (getBatteryLevelUser != NULL) {
+		return getBatteryLevelUser();
+	}
+
+	return 255;
+}
 /**
  * @brief Read a downlink message from the ring buffer.
  *
@@ -630,6 +640,17 @@ out:
 	return ret;
 }
 
+int lorawan_set_battery_level_callback(uint8_t (*battery_lvl_clbk)(void))
+{
+	if (battery_lvl_clbk == NULL) {
+		return -EINVAL;
+	}
+
+	getBatteryLevelUser = battery_lvl_clbk;
+
+	return 0; 
+}
+
 int lorawan_receive_available()
 {
 	return rx_buf_avail();
@@ -653,7 +674,7 @@ static int lorawan_init(struct device *dev)
 	macPrimitives.MacMcpsIndication = McpsIndication;
 	macPrimitives.MacMlmeConfirm = MlmeConfirm;
 	macPrimitives.MacMlmeIndication = MlmeIndication;
-	macCallbacks.GetBatteryLevel = NULL;
+	macCallbacks.GetBatteryLevel = getBatteryLevelLocal;
 	macCallbacks.GetTemperatureLevel = NULL;
 	macCallbacks.NvmContextChange = NULL;
 	macCallbacks.MacProcessNotify = OnMacProcessNotify;
