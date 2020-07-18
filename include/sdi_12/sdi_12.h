@@ -117,6 +117,7 @@ typedef enum  {
 	SDI_12_CMD_ADDIT_CONCUR_MEAS_CRC,
 	SDI_12_CMD_CONT_MEAS,
 	SDI_12_CMD_CONT_MEAS_CRC,
+	SDI_12_CMD_EXT,
 	SDI_12_CMD_TYPE_MAX
 } SDI_12_CMD_TYPE_e;
 
@@ -126,6 +127,7 @@ typedef enum  {
 	SDI_12_ADDR_PAYLD,
 	SDI_12_MEAS_PAYLD,
 	SDI_12_VAL_PAYLD,
+	SDI_12_STR_PAYLD,
 	SDI_12_FREEFORM_PAYLD,
 	SDI_12_PAYLOAD_TYPE_MAX
 } SDI_12_PAYLOAD_TYPE_e;
@@ -221,6 +223,21 @@ int8_t sdi_12_get_measurements(struct device *uart_dev, char address,
 				double* data_out, unsigned int len, bool crc);
 
 /**
+ * @brief Sends an extended command to a sensor and 
+ *
+ * @param uart_dev Device handle for the UART interface used as as the data line
+ * @param address Address of the sensor used
+ * @param ext_cmd[in] Pointer to a null-terminated string of an extended command
+ * @param ret_str[out] Pointer to an buffer for the command response to be placed
+ * (if any). Must be large enough to fit the return value as defined by the
+ * sdi_12 device manufacturer.
+ *
+ * @return length of received response, or negative SDI_12_STATUS_e on failure
+ */
+int8_t sdi_12_ext_command(struct device *uart_dev, char address,
+				char* ext_cmd, char* ret_str);
+
+/**
  * @brief Creates and sends a command, waiting and parsing the responses when
  * appropriate.
  *
@@ -234,13 +251,13 @@ int8_t sdi_12_get_measurements(struct device *uart_dev, char address,
  * @return SDI_12_STATUS_OK if succeeded or a negative SDI_12_STATUS_e otheriwse 
  */
 int8_t sdi_12_cmd_n_resp(struct device *uart_dev, SDI_12_CMD_TYPE_e cmd_type,
-			char address, char param_cmd, void* param_resp);
+			char address, void *param_cmd, void* param_resp);
 
 int8_t sdi_12_parse_response(char *resp, char resp_len,
 			SDI_12_CMD_TYPE_e cmd_type, char *address, void* data);
 
 int8_t sdi_12_prep_command(char *cmd, char address,
-				SDI_12_CMD_TYPE_e cmd_type, char param);
+				SDI_12_CMD_TYPE_e cmd_type, void *param);
 
 void sdi_12_calc_crc_ascii(char *cmd, uint8_t cmd_len, char* crc);
 

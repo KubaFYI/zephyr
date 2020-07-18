@@ -53,7 +53,8 @@ static char sdi_12_cmd_char[SDI_12_CMD_TYPE_MAX] = {
 		'C',			// SDI_12_CMD_ADDIT_CONCUR_MEAS
 		'C',			// SDI_12_CMD_ADDIT_CONCUR_MEAS_CRC
 		'R',			// SDI_12_CMD_CONT_MEAS
-		'R'			// SDI_12_CMD_CONT_MEAS_CRC
+		'R',			// SDI_12_CMD_CONT_MEAS_CRC
+		'Z'			// SDI_12_CMD_EXT
 };		
 
 static bool sdi_12_cmd_crc[SDI_12_CMD_TYPE_MAX] = \
@@ -72,7 +73,8 @@ static bool sdi_12_cmd_crc[SDI_12_CMD_TYPE_MAX] = \
 		false,		// SDI_12_CMD_ADDIT_CONCUR_MEAS
 		true,		// SDI_12_CMD_ADDIT_CONCUR_MEAS_CRC
 		false,		// SDI_12_CMD_CONT_MEAS
-		true		// SDI_12_CMD_CONT_MEAS_CRC
+		true,		// SDI_12_CMD_CONT_MEAS_CRC
+		false		// SDI_12_CMD_EXT
 };		
 static bool sdi_12_cmd_param[SDI_12_CMD_TYPE_MAX] = \
 		{false,		// SDI_12_CMD_ACK_ACTIVE
@@ -90,7 +92,8 @@ static bool sdi_12_cmd_param[SDI_12_CMD_TYPE_MAX] = \
 		true,		// SDI_12_CMD_ADDIT_CONCUR_MEAS
 		true,		// SDI_12_CMD_ADDIT_CONCUR_MEAS_CRC
 		true,		// SDI_12_CMD_CONT_MEAS
-		true		// SDI_12_CMD_CONT_MEAS_CRC
+		true,		// SDI_12_CMD_CONT_MEAS_CRC
+		false		// SDI_12_CMD_EXT
 };	
 
 static SDI_12_PAYLOAD_TYPE_e sdi_12_resp_param[SDI_12_CMD_TYPE_MAX] = \
@@ -109,12 +112,13 @@ static SDI_12_PAYLOAD_TYPE_e sdi_12_resp_param[SDI_12_CMD_TYPE_MAX] = \
 		SDI_12_MEAS_PAYLD,	// SDI_12_CMD_ADDIT_CONCUR_MEAS
 		SDI_12_MEAS_PAYLD,	// SDI_12_CMD_ADDIT_CONCUR_MEAS_CRC
 		SDI_12_VAL_PAYLD,	// SDI_12_CMD_CONT_MEAS
-		SDI_12_VAL_PAYLD	// SDI_12_CMD_CONT_MEAS_CRC
+		SDI_12_VAL_PAYLD,	// SDI_12_CMD_CONT_MEAS_CRC
+		SDI_12_STR_PAYLD	// SDI_12_CMD_EXT
 };
 
 
 int8_t sdi_12_cmd_n_resp(struct device *uart_dev, SDI_12_CMD_TYPE_e cmd_type,
-            char address, char param_cmd, void* param_resp);
+            char address, void *param_cmd, void *param_resp);
 
 static int8_t sdi_12_tx_rx_inner_retries(struct device *uart_dev, char *buffer,
 				       int buffer_len);
@@ -123,7 +127,7 @@ int8_t sdi_12_parse_response(char *resp, char resp_len,
 			SDI_12_CMD_TYPE_e cmd_type, char *address, void* data);
 
 int8_t sdi_12_prep_command(char *cmd, char address,
-				SDI_12_CMD_TYPE_e cmd_type, char param);
+				SDI_12_CMD_TYPE_e cmd_type, void *param);
 
 void sdi_12_calc_crc_ascii(char *cmd, uint8_t cmd_len, char *crc);
 
@@ -177,8 +181,9 @@ int8_t sdi_12_init(struct device *uart_dev, struct device *gpio_dev,
 int8_t sdi_12_ack_active(struct device *uart_dev, char address)
 {
 	int ret;
+	char param = SDI_12_NULL_PARAM;
 	ret = sdi_12_cmd_n_resp(uart_dev, SDI_12_CMD_ACK_ACTIVE, address,
-			SDI_12_NULL_PARAM, NULL);
+			&param, NULL);
 	if ( ret != SDI_12_STATUS_OK ) {
 		LOG_ERR("Ping sensor error");
 		return ret;
@@ -192,8 +197,9 @@ int8_t sdi_12_get_info(struct device *uart_dev, char address,
 				struct sdi_12_sensr_id *info)
 {
 	int ret;
+	char param = SDI_12_NULL_PARAM;
 	ret = sdi_12_cmd_n_resp(uart_dev, SDI_12_CMD_SEND_ID, address,
-			SDI_12_NULL_PARAM, (void*)info);
+			&param, (void*)info);
 	if ( ret != SDI_12_STATUS_OK ) {
 		LOG_ERR("Information retrieve error");
 		return ret;
@@ -211,8 +217,9 @@ int8_t sdi_12_get_info(struct device *uart_dev, char address,
 int8_t sdi_12_get_address(struct device *uart_dev, char* address)
 {
 	int ret;
+	char param = SDI_12_NULL_PARAM;
 	ret = sdi_12_cmd_n_resp(uart_dev, SDI_12_CMD_ADDR_QUERY,
-				SDI_12_NULL_PARAM, SDI_12_NULL_PARAM, address);
+				SDI_12_NULL_PARAM, &param, address);
 	if ( ret != SDI_12_STATUS_OK ) {
 		LOG_ERR("Error querying address");
 		return ret;
@@ -228,7 +235,7 @@ int8_t sdi_12_change_address(struct device *uart_dev, char address_old,
 	int ret;
 	char ret_address;
 	ret = sdi_12_cmd_n_resp(uart_dev, SDI_12_CMD_CHNG_ADDR, address_old,
-			address_new, &ret_address);
+			&address_new, &ret_address);
 	if ( ret != SDI_12_STATUS_OK ) {
 		LOG_ERR("Error changing address");
 		return ret;
@@ -250,6 +257,7 @@ int8_t sdi_12_get_measurements(struct device *uart_dev, char address,
 	int data_portion;
 	char address_tmp;
 	char srv_req_buff[4]; 
+	char char_param;
 	struct sdi_12_meas_resp measurement_info;
 	struct sdi_12_value_resp resp_values;;
 	SDI_12_CMD_TYPE_e meas_cmd;
@@ -266,8 +274,9 @@ int8_t sdi_12_get_measurements(struct device *uart_dev, char address,
 		meas_cmd = SDI_12_CMD_START_MEAS_CRC;
 	}
 
+	char_param = SDI_12_NULL_PARAM;
 	ret = sdi_12_cmd_n_resp(uart_dev, meas_cmd, address,
-				SDI_12_NULL_PARAM, &measurement_info);
+				&char_param, &measurement_info);
 	if ( ret != SDI_12_STATUS_OK ) {
 		LOG_ERR("Requesting measurement failed");
 		return ret;
@@ -309,8 +318,9 @@ int8_t sdi_12_get_measurements(struct device *uart_dev, char address,
 	data_read = 0;
 	data_portion = 0;
 	while (data_read < measurement_info.meas_no) {
+		char_param = data_portion+'0';
 		ret = sdi_12_cmd_n_resp(uart_dev, SDI_12_CMD_SEND_DATA, address,
-					data_portion+'0', &resp_values);
+					&char_param, &resp_values);
 		if ( ret != SDI_12_STATUS_OK ) {
 			LOG_ERR("Retrieving measurements failed");
 			return ret;
@@ -342,8 +352,23 @@ int8_t sdi_12_get_measurements(struct device *uart_dev, char address,
 	return SDI_12_STATUS_OK;
 }
 
+int8_t sdi_12_ext_command(struct device *uart_dev, char address,
+				char* ext_cmd, char* ret_str)
+{
+	int ret;
+
+	ret = sdi_12_cmd_n_resp(uart_dev, SDI_12_CMD_EXT, address,
+				ext_cmd, ret_str);
+	if ( ret != SDI_12_STATUS_OK ) {
+		LOG_ERR("Requesting measurement failed");
+		return ret;
+	}
+
+	return strlen(ret_str);
+}
+
 int8_t sdi_12_cmd_n_resp(struct device *uart_dev, SDI_12_CMD_TYPE_e cmd_type,
-            char address, char param_cmd, void* param_resp)
+            char address, void *param_cmd, void* param_resp)
 {
 	int ret;
 	char resp_address;
@@ -403,7 +428,7 @@ int8_t sdi_12_cmd_n_resp(struct device *uart_dev, SDI_12_CMD_TYPE_e cmd_type,
 			((cmd_type != SDI_12_CMD_CHNG_ADDR &&
 				resp_address != address) ||
 			(cmd_type == SDI_12_CMD_CHNG_ADDR &&
-				resp_address != param_cmd))) {
+				resp_address != *(char*)param_cmd))) {
 			LOG_DBG("Cmd-resp address mismatch");
 			ret = SDI_12_STATUS_ADDR_MISMATCH;
 		}
@@ -675,6 +700,12 @@ int8_t sdi_12_parse_response(char *resp, char resp_len,
 		}
 
 		break;
+	case SDI_12_STR_PAYLD:
+		/* Just copy the whole string in response and null-terminate */
+		memcpy(data, resp+resp_idx,
+			sizeof(resp[resp_idx]) * (pld_end_idx-resp_idx));
+		((char*)data)[(pld_end_idx-resp_idx)] = '\0';
+		break;
 	case SDI_12_FREEFORM_PAYLD:
 		/* This payload type is used for when no particular response
 		format is specified. Just return successfully. */
@@ -700,9 +731,12 @@ int8_t sdi_12_parse_response(char *resp, char resp_len,
 }
 
 int8_t sdi_12_prep_command(char *cmd, char address,
-				SDI_12_CMD_TYPE_e cmd_type, char param)
+				SDI_12_CMD_TYPE_e cmd_type, void *param)
 {
 	int cmd_idx = 0;
+	char char_param;
+
+	char_param = *(char*)param;
 
 	if (cmd_type == SDI_12_CMD_ADDR_QUERY) {
 		cmd[cmd_idx++] = '?';
@@ -722,17 +756,20 @@ int8_t sdi_12_prep_command(char *cmd, char address,
 	}
 
 	if (cmd_type == SDI_12_CMD_CHNG_ADDR) {
-		if (isalnum((int)param) == 0) {
-			LOG_ERR("Invalid address param '%c'", (char)param);
+		if (isalnum((int)char_param) == 0) {
+			LOG_ERR("Invalid address param '%c'", char_param);
 			return SDI_12_STATUS_ERROR;
 		}
-		cmd[cmd_idx++] = param;
+		cmd[cmd_idx++] = char_param;
+	} else if (cmd_type == SDI_12_CMD_EXT) {
+		memcpy(&cmd[cmd_idx], param, sizeof(char) * strlen(param));
+		cmd_idx += strlen(param);
 	} else if (sdi_12_cmd_param[cmd_type]) {
-		if (isdigit(param) == 0) {
+		if (isdigit(char_param) == 0) {
 			LOG_ERR("Invalid parameter (not a digit)");
 			return SDI_12_STATUS_ERROR;
 		}
-		cmd[cmd_idx++] = param;
+		cmd[cmd_idx++] = char_param;
 	}
 
 	cmd[cmd_idx++] = '!';

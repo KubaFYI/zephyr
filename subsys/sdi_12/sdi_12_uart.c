@@ -182,13 +182,13 @@ int8_t sdi_12_uart_send_break(struct device *uart_dev)
 int8_t sdi_12_uart_tx(struct device *uart_dev, uint8_t *buffer,
 			unsigned int len)
 {
-	LOG_DBG("TX first %d chars of %s", len, log_strdup(buffer));
+	LOG_INF("TX first %d chars of %s", len, log_strdup(buffer));
 
 	irq_data.tx_buffer = buffer;
 
 	irq_data.tx_remaining = len;
 
-	k_timer_start(&tx_ongoing_timer, K_MSEC(len*SDI_12_SINGLE_SYMBOL_MS),
+	k_timer_start(&tx_ongoing_timer, K_MSEC(SDI_12_SINGLE_SYMBOL_MS*len+1),
 			K_NO_WAIT);
 
 	uart_irq_tx_enable(uart_dev);
@@ -231,7 +231,7 @@ int8_t sdi_12_uart_rx(struct device *uart_dev, uint8_t *buffer,
 	if (ret == -EAGAIN) {
 		irq_data.rx_remaining = -1;
 		uart_irq_rx_disable(irq_data.uart_dev);
-		LOG_WRN("Timed out waiting for first char (%dms, sem:%d)",
+		LOG_DBG("Timed out waiting for first char (%dms, sem:%d)",
 			timeout_start, 	k_sem_count_get(&irq_data.rx_first_received_sem));
 		return SDI_12_STATUS_TIMEOUT;
 	}
@@ -244,7 +244,7 @@ int8_t sdi_12_uart_rx(struct device *uart_dev, uint8_t *buffer,
 	if (ret == -EAGAIN) {
 		irq_data.rx_remaining = -1;
 		uart_irq_rx_disable(irq_data.uart_dev);
-		LOG_WRN("Timed out waiting for complete RX (%dms)",
+		LOG_DBG("Timed out waiting for complete RX (%dms)",
 			timeout_end);
 		return SDI_12_STATUS_TIMEOUT;
 	}
@@ -262,7 +262,7 @@ int8_t sdi_12_uart_rx(struct device *uart_dev, uint8_t *buffer,
 		irq_data.term_found = false;
 	}
 
-	LOG_DBG("RXed: %s (first %d chars)",
+	LOG_INF("RXed: %s (first %d chars)",
 		log_strdup(buffer), irq_data.rx_collected);
 
 	return SDI_12_STATUS_OK;
