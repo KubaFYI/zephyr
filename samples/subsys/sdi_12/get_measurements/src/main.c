@@ -35,18 +35,19 @@ void main(void)
     int datalen = 10;
     int i;
 
-    static struct device *uart_dev;
-    static struct device *gpio_dev;
+    const struct device *uart_dev;
+    const struct device *gpio_dev;
     gpio_pin_t tx_enable_pin;
 
 #ifdef CONFIG_BOARD_ADAFRUIT_FEATHER_M0_BASIC_PROTO
-    struct device *muxa = device_get_binding(DT_ATMEL_SAM0_PINMUX_PINMUX_A_LABEL);
+    const struct device *muxa =
+        device_get_binding(DT_LABEL(DT_NODELABEL(pinmux_a)));
     /* PA16 - Feather pin 11 - pad 0 - TX */
     pinmux_pin_set(muxa, 16, PINMUX_FUNC_C);
     /* PA18 - Feather pin 10 - pad 2 - RX */
     pinmux_pin_set(muxa, 18, PINMUX_FUNC_C);
-    uart_dev = device_get_binding(DT_ALIAS_SERCOM_1_LABEL);
-    gpio_dev = device_get_binding(DT_ALIAS_PORT_A_LABEL);
+    uart_dev = device_get_binding(DT_LABEL(DT_NODELABEL(sercom1)));
+    gpio_dev = device_get_binding(DT_LABEL(DT_NODELABEL(porta)));
     tx_enable_pin = 19;
 #else
     uart_dev = device_get_binding("YOUR_SOC_UART_LABEL");
@@ -69,19 +70,20 @@ void main(void)
         return;
     }
 
-    k_sleep(1000);
+    k_sleep(K_SECONDS(1));
 
     while (1) {
         ret = sdi_12_get_measurements(uart_dev, addr,
                 data, datalen, false);
         if (ret == 0 ) {
-            LOG_INF("okay");
+            LOG_INF("Data read ok");
             for(i=0; i<datalen; i++) {
-                LOG_INF("Meas %d: %d.%d", i, data[i], (int)((data[i]-(int)data[i])*10));
+                LOG_INF("Meas %d: %d.%d", i, (int)data[i],
+                        (int)((data[i]-(int)data[i])*10));
             }
         } else {
-            LOG_INF("er: %s!", log_strdup(SDI_12_ERR_TO_STR(ret)));
+            LOG_INF("err: %s!", log_strdup(SDI_12_ERR_TO_STR(ret)));
         }
-        k_sleep(5000);
+        k_sleep(K_SECONDS(5));
     }
 }

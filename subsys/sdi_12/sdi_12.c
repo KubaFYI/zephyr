@@ -26,7 +26,7 @@
 LOG_MODULE_REGISTER(sdi_12);
 
 static char last_address;
-static struct device *sdi_12_gpio_dev;
+static const struct device *sdi_12_gpio_dev;
 static gpio_pin_t sdi_12_tx_enable_pin;
 
 struct k_timer break_needed_timer;
@@ -39,21 +39,21 @@ bool sensor_wakeup_deadline;
 
 static char sdi_12_cmd_char[SDI_12_CMD_TYPE_MAX] = {
 		SDI_12_NULL_PARAM,	// SDI_12_CMD_ACK_ACTIVE
-		'I',			// SDI_12_CMD_SEND_ID
-		'A',			// SDI_12_CMD_CHNG_ADDR
+		'I',				// SDI_12_CMD_SEND_ID
+		'A',				// SDI_12_CMD_CHNG_ADDR
 		SDI_12_NULL_PARAM,	// SDI_12_CMD_ADDR_QUERY
-		'M',			// SDI_12_CMD_START_MEAS
-		'M',			// SDI_12_CMD_START_MEAS_CRC
-		'D',			// SDI_12_CMD_SEND_DATA
-		'M',			// SDI_12_CMD_ADDIT_MEAS
-		'M',			// SDI_12_CMD_ADDIT_MEAS_CRC
-		'V',			// SDI_12_CMD_START_VERIF
-		'C',			// SDI_12_CMD_START_CONCUR_MEAS
-		'C',			// SDI_12_CMD_START_CONCUR_MEAS_CRC
-		'C',			// SDI_12_CMD_ADDIT_CONCUR_MEAS
-		'C',			// SDI_12_CMD_ADDIT_CONCUR_MEAS_CRC
-		'R',			// SDI_12_CMD_CONT_MEAS
-		'R'			// SDI_12_CMD_CONT_MEAS_CRC
+		'M',				// SDI_12_CMD_START_MEAS
+		'M',				// SDI_12_CMD_START_MEAS_CRC
+		'D',				// SDI_12_CMD_SEND_DATA
+		'M',				// SDI_12_CMD_ADDIT_MEAS
+		'M',				// SDI_12_CMD_ADDIT_MEAS_CRC
+		'V',				// SDI_12_CMD_START_VERIF
+		'C',				// SDI_12_CMD_START_CONCUR_MEAS
+		'C',				// SDI_12_CMD_START_CONCUR_MEAS_CRC
+		'C',				// SDI_12_CMD_ADDIT_CONCUR_MEAS
+		'C',				// SDI_12_CMD_ADDIT_CONCUR_MEAS_CRC
+		'R',				// SDI_12_CMD_CONT_MEAS
+		'R'					// SDI_12_CMD_CONT_MEAS_CRC
 };		
 
 static bool sdi_12_cmd_crc[SDI_12_CMD_TYPE_MAX] = \
@@ -113,10 +113,10 @@ static SDI_12_PAYLOAD_TYPE_e sdi_12_resp_param[SDI_12_CMD_TYPE_MAX] = \
 };
 
 
-int8_t sdi_12_cmd_n_resp(struct device *uart_dev, SDI_12_CMD_TYPE_e cmd_type,
+int8_t sdi_12_cmd_n_resp(const struct device *uart_dev, SDI_12_CMD_TYPE_e cmd_type,
             char address, char param_cmd, void* param_resp);
 
-static int8_t sdi_12_tx_rx_inner_retries(struct device *uart_dev, char *buffer,
+static int8_t sdi_12_tx_rx_inner_retries(const struct device *uart_dev, char *buffer,
 				       int buffer_len);
 
 int8_t sdi_12_parse_response(char *resp, char resp_len,
@@ -155,7 +155,7 @@ void sensor_wakeup_deadline_timer_clbk(struct k_timer* timer_id)
 	sensor_wakeup_deadline = true;
 }
 
-int8_t sdi_12_init(struct device *uart_dev, struct device *gpio_dev,
+int8_t sdi_12_init(const struct device *uart_dev, const struct device *gpio_dev,
 			gpio_pin_t tx_enable_pin)
 {
 	int ret;
@@ -174,7 +174,7 @@ int8_t sdi_12_init(struct device *uart_dev, struct device *gpio_dev,
 	return sdi_12_uart_init(uart_dev);
 }
 
-int8_t sdi_12_ack_active(struct device *uart_dev, char address)
+int8_t sdi_12_ack_active(const struct device *uart_dev, char address)
 {
 	int ret;
 	ret = sdi_12_cmd_n_resp(uart_dev, SDI_12_CMD_ACK_ACTIVE, address,
@@ -188,7 +188,7 @@ int8_t sdi_12_ack_active(struct device *uart_dev, char address)
 	return SDI_12_STATUS_OK;
 }
 
-int8_t sdi_12_get_info(struct device *uart_dev, char address,
+int8_t sdi_12_get_info(const struct device *uart_dev, char address,
 				struct sdi_12_sensr_id *info)
 {
 	int ret;
@@ -208,7 +208,7 @@ int8_t sdi_12_get_info(struct device *uart_dev, char address,
 	return SDI_12_STATUS_OK;
 }
 
-int8_t sdi_12_get_address(struct device *uart_dev, char* address)
+int8_t sdi_12_get_address(const struct device *uart_dev, char* address)
 {
 	int ret;
 	ret = sdi_12_cmd_n_resp(uart_dev, SDI_12_CMD_ADDR_QUERY,
@@ -222,7 +222,7 @@ int8_t sdi_12_get_address(struct device *uart_dev, char* address)
 	return SDI_12_STATUS_OK;
 }
 
-int8_t sdi_12_change_address(struct device *uart_dev, char address_old,
+int8_t sdi_12_change_address(const struct device *uart_dev, char address_old,
 			  char address_new)
 {
 	int ret;
@@ -241,7 +241,7 @@ int8_t sdi_12_change_address(struct device *uart_dev, char address_old,
 	return SDI_12_STATUS_OK;
 }
 
-int8_t sdi_12_get_measurements(struct device *uart_dev, char address,
+int8_t sdi_12_get_measurements(const struct device *uart_dev, char address,
 				double* data_out, unsigned int len, bool crc)
 {	
 	int ret;
@@ -342,7 +342,7 @@ int8_t sdi_12_get_measurements(struct device *uart_dev, char address,
 	return SDI_12_STATUS_OK;
 }
 
-int8_t sdi_12_cmd_n_resp(struct device *uart_dev, SDI_12_CMD_TYPE_e cmd_type,
+int8_t sdi_12_cmd_n_resp(const struct device *uart_dev, SDI_12_CMD_TYPE_e cmd_type,
             char address, char param_cmd, void* param_resp)
 {
 	int ret;
@@ -424,7 +424,7 @@ int8_t sdi_12_cmd_n_resp(struct device *uart_dev, SDI_12_CMD_TYPE_e cmd_type,
 
 }
 
-static int8_t sdi_12_tx_rx_inner_retries(struct device *uart_dev, char *buffer,
+static int8_t sdi_12_tx_rx_inner_retries(const struct device *uart_dev, char *buffer,
 				       int buffer_len)
 {
 	int ret = SDI_12_STATUS_ERROR;

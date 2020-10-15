@@ -13,6 +13,8 @@
 #define SDI_12_MAX_SYMBOL_SPACING_CEIL_MS (1.6)
 #define SDI_12_SINGLE_SYMBOL_MS (10.0*1000/SDI_12_BAUDRATE + \
 				 SDI_12_MAX_SYMBOL_SPACING_CEIL_MS)
+#define SDI_12_BREAKING_MS 13
+
 #define SDI_12_PARITY UART_CFG_PARITY_EVEN
 #define SDI_12_STOP_BITS UART_CFG_STOP_BITS_1
 #define SDI_12_DATA_BITS UART_CFG_DATA_BITS_7
@@ -29,7 +31,7 @@
  * @return SDI_12_STATUS_OK if succeeded or SDI_12_STATUS_CONFIG_ERROR
  * status otheriwse. 
  */
-int8_t sdi_12_uart_init(struct device *uart_dev);
+int8_t sdi_12_uart_init(const struct device *uart_dev);
 
 /**
  * @brief Sends a break signal to sensor.
@@ -41,7 +43,7 @@ int8_t sdi_12_uart_init(struct device *uart_dev);
  * @return SDI_12_STATUS_OK if succeeded or SDI_12_STATUS_CONFIG_ERROR
  * status otheriwse. 
  */
-int8_t sdi_12_uart_send_break(struct device *uart_dev);
+int8_t sdi_12_uart_send_break(const struct device *uart_dev);
 
 /**
  * @brief Transmitts buffer over uart
@@ -53,7 +55,7 @@ int8_t sdi_12_uart_send_break(struct device *uart_dev);
  * @return SDI_12_STATUS_OK if succeeded or a negative SDI_12_STATUS_e
  * status otheriwse. 
  */
-int8_t sdi_12_uart_tx(struct device *uart_dev, uint8_t *buffer,
+int8_t sdi_12_uart_tx(const struct device *uart_dev, uint8_t *buffer,
 			unsigned int len);
 
 /**
@@ -77,7 +79,7 @@ int8_t sdi_12_uart_tx(struct device *uart_dev, uint8_t *buffer,
  * filled the buffer before fulfilling other conditions, or
  * SDI_12_STATUS_TIMEOUT if timed out.
  */
-int8_t sdi_12_uart_rx(struct device *uart_dev, uint8_t *buffer,
+int8_t sdi_12_uart_rx(const struct device *uart_dev, uint8_t *buffer,
 			unsigned int len, unsigned int timeout_start,
 			unsigned int timeout_end);
 

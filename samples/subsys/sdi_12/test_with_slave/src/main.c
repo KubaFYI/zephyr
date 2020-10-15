@@ -48,19 +48,31 @@ LOG_MODULE_REGISTER(app);
 
 #define UART_INTERFACE DT_INST_1_ATMEL_SAM0_UART_LABEL
 
-static int8_t test_address_query(struct device *dev);
-static int8_t test_address_change(struct device *dev);
-static int8_t test_id(struct device *dev);
-static int8_t test_reading_simple(struct device *dev);
-static int8_t test_reading_simple_retries(struct device *dev);
-static int8_t test_reading_simple_no_resp(struct device *dev);
-static int8_t test_reading_simple_crc(struct device *dev);
-static int8_t test_reading_simple_10s(struct device *dev);
-static int8_t test_reading_more_values(struct device *dev);
-static int8_t test_reading_with_service_req(struct device *dev);
-static int8_t test_incorrect_crc(struct device *dev);
+#define LED0_NODE DT_ALIAS(led0)
 
-static int8_t (*test_functions[]) (struct device *dev) = {
+#if DT_NODE_HAS_STATUS(LED0_NODE, okay)
+#define LED0	DT_GPIO_LABEL(LED0_NODE, gpios)
+#define PIN	DT_GPIO_PIN(LED0_NODE, gpios)
+#define FLAGS	DT_GPIO_FLAGS(LED0_NODE, gpios)
+#else
+#define LED0	""
+#define PIN	0
+#define FLAGS	0
+#endif
+
+static int8_t test_address_query(const struct device *dev);
+static int8_t test_address_change(const struct device *dev);
+static int8_t test_id(const struct device *dev);
+static int8_t test_reading_simple(const struct device *dev);
+static int8_t test_reading_simple_retries(const struct device *dev);
+static int8_t test_reading_simple_no_resp(const struct device *dev);
+static int8_t test_reading_simple_crc(const struct device *dev);
+static int8_t test_reading_simple_10s(const struct device *dev);
+static int8_t test_reading_more_values(const struct device *dev);
+static int8_t test_reading_with_service_req(const struct device *dev);
+static int8_t test_incorrect_crc(const struct device *dev);
+
+static int8_t (*test_functions[]) (const struct device *dev) = {
 test_address_query,
 test_address_change,
 test_id,
@@ -90,7 +102,7 @@ static char *test_functions_str[] = {
 
 int test_function_no = sizeof(test_functions) / sizeof(test_functions[0]);
 
-static int8_t prep_addr(struct device *dev, char addr)
+static int8_t prep_addr(const struct device *dev, char addr)
 {
 	char old_address;
 	int ret;
@@ -113,7 +125,7 @@ static int8_t prep_addr(struct device *dev, char addr)
 	return 0;
 }
 
-static int8_t test_address_query(struct device *dev)
+static int8_t test_address_query(const struct device *dev)
 {
 	int ret;
 	char address;
@@ -131,7 +143,7 @@ static int8_t test_address_query(struct device *dev)
 	return 0;
 }
 
-static int8_t test_address_change(struct device *dev)
+static int8_t test_address_change(const struct device *dev)
 {
 	int ret;
 	char address;
@@ -168,7 +180,7 @@ static int8_t test_address_change(struct device *dev)
 	return 0;
 }
 
-static int8_t test_id(struct device *dev)
+static int8_t test_id(const struct device *dev)
 {
 	int ret;
 	struct sdi_12_sensr_id data;
@@ -197,7 +209,7 @@ static int8_t test_id(struct device *dev)
 	return 0;
 }
 
-static int8_t test_reading_simple(struct device *dev)
+static int8_t test_reading_simple(const struct device *dev)
 {
 	int ret;
 	int i;
@@ -224,7 +236,7 @@ static int8_t test_reading_simple(struct device *dev)
 	return 0;
 }
 
-static int8_t test_reading_simple_retries(struct device *dev)
+static int8_t test_reading_simple_retries(const struct device *dev)
 {
 	int ret;
 	int i;
@@ -257,7 +269,7 @@ static int8_t test_reading_simple_retries(struct device *dev)
 	return 0;
 }
 
-static int8_t test_reading_simple_no_resp(struct device *dev)
+static int8_t test_reading_simple_no_resp(const struct device *dev)
 {
 	int ret;
 	double data[3];
@@ -281,7 +293,7 @@ static int8_t test_reading_simple_no_resp(struct device *dev)
 	return 0;
 }
 
-static int8_t test_reading_simple_crc(struct device *dev)
+static int8_t test_reading_simple_crc(const struct device *dev)
 {
 	int ret;
 	int i;
@@ -309,7 +321,7 @@ static int8_t test_reading_simple_crc(struct device *dev)
 	return 0;
 }
 
-static int8_t test_reading_simple_10s(struct device *dev)
+static int8_t test_reading_simple_10s(const struct device *dev)
 {
 	int ret;
 	int i;
@@ -337,7 +349,7 @@ static int8_t test_reading_simple_10s(struct device *dev)
 	return 0;
 }
 
-static int8_t test_reading_more_values(struct device *dev)
+static int8_t test_reading_more_values(const struct device *dev)
 {
 	int ret;
 	int i;
@@ -366,11 +378,11 @@ static int8_t test_reading_more_values(struct device *dev)
 	return 0;
 }
 
-static int8_t test_reading_with_service_req(struct device *dev)
+static int8_t test_reading_with_service_req(const struct device *dev)
 {
 	int ret;
 	int i;
-	s64_t time_at_start;
+	int64_t time_at_start;
 	double expected_data[] = {1.11, -2.22, 3.33};
 	double data[3];
 	char addr_to_use = '3';
@@ -403,7 +415,7 @@ static int8_t test_reading_with_service_req(struct device *dev)
 	return 0;
 }
 
-static int8_t test_incorrect_crc(struct device *dev)
+static int8_t test_incorrect_crc(const struct device *dev)
 {
 	int ret;
 	double data[3];
@@ -424,6 +436,21 @@ static int8_t test_incorrect_crc(struct device *dev)
 
 }
 
+void blink(const struct device *dev, int times, bool long_blink)
+{
+	int i;
+#if DT_NODE_HAS_STATUS(LED0_NODE, okay)
+	gpio_pin_set(dev, PIN, 0);
+	for(i=0; i<times; i++)
+	{
+		gpio_pin_set(dev, PIN, 1);
+		k_sleep(K_MSEC(long_blink ? 1000 : 200));
+		gpio_pin_set(dev, PIN, 0);
+		k_sleep(K_MSEC(500));
+	}
+#endif
+} 
+
 /**
  * @brief Main application entry point.
  *
@@ -435,19 +462,34 @@ void main(void)
 	int ret;
 	int i =0;
 
-
-	static struct device *uart_dev;
-	static struct device *gpio_dev;
+	const struct device *uart_dev;
+	const struct device *gpio_dev;
 	gpio_pin_t tx_enable_pin;
 
+	const struct device *dev;
+#if DT_NODE_HAS_STATUS(LED0_NODE, okay)
+	dev = device_get_binding(LED0);
+	if (dev == NULL) {
+		return;
+	}
+
+	ret = gpio_pin_configure(dev, PIN, GPIO_OUTPUT_ACTIVE | FLAGS);
+	if (ret < 0) {
+		return;
+	}
+
+	gpio_pin_set(dev, PIN, 0);
+#endif
+
 #ifdef CONFIG_BOARD_ADAFRUIT_FEATHER_M0_BASIC_PROTO
-	struct device *muxa = device_get_binding(DT_ATMEL_SAM0_PINMUX_PINMUX_A_LABEL);
+	const struct device *muxa = device_get_binding(
+					DT_LABEL(DT_NODELABEL(pinmux_a)));
 	/* PA16 - Feather pin 11 - pad 0 - TX */
 	pinmux_pin_set(muxa, 16, PINMUX_FUNC_C);
 	/* PA18 - Feather pin 10 - pad 2 - RX */
 	pinmux_pin_set(muxa, 18, PINMUX_FUNC_C);
-	uart_dev = device_get_binding(DT_ALIAS_SERCOM_1_LABEL);
-	gpio_dev = device_get_binding(DT_ALIAS_PORT_A_LABEL);
+	uart_dev = device_get_binding(DT_LABEL(DT_NODELABEL(sercom1)));
+	gpio_dev = device_get_binding(DT_LABEL(DT_NODELABEL(porta)));
 	tx_enable_pin = 19;
 #else
 	uart_dev = device_get_binding("YOUR_SOC_UART_LABEL");
@@ -470,20 +512,25 @@ void main(void)
 		return;
 	}
 
-	k_sleep(1000);
+	k_sleep(K_SECONDS(1));
 
 	int successes = 0, failures = 0;
 	for (i=0; i<test_function_no; i++) {
 		LOG_INF("Executing %s", test_functions_str[i]);
 		ret = (test_functions[i])(uart_dev);
 		if (ret == SDI_12_STATUS_OK) {
+			blink(dev, 1, true);
 			LOG_INF("Test %s suceeded", test_functions_str[i]);
 			successes++;
 		} else {
+			blink(dev, 3, false);
 			LOG_ERR("Test %s failed", test_functions_str[i]);
 			failures++;
 		}
-		k_sleep(2000);
+		k_sleep(K_SECONDS(2));
 	}
+#if DT_NODE_HAS_STATUS(LED0_NODE, okay)
+	gpio_pin_set(dev, PIN, 1);
+#endif
 	LOG_INF("successes = %d failures =%d", successes, failures);
 }

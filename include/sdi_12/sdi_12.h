@@ -97,7 +97,7 @@ typedef enum {
 #endif
 
 
-int8_t sdi_12_rx(struct device *uart_dev, uint8_t *buffer, unsigned int len,
+int8_t sdi_12_rx(const struct device *uart_dev, uint8_t *buffer, unsigned int len,
 				char *terminator, unsigned int timeout);
 typedef enum  {
 	SDI_12_CMD_ACK_ACTIVE = 0,
@@ -156,7 +156,7 @@ struct sdi_12_value_resp {
  * @return SDI_12_STATUS_OK if succeeded or SDI_12_STATUS_CONFIG_ERROR
  * status otheriwse. 
  */
-int8_t sdi_12_init(struct device *uart_dev, struct device *gpio_dev,
+int8_t sdi_12_init(const struct device *uart_dev, const struct device *gpio_dev,
 			gpio_pin_t tx_enable_pin);
 
 /**
@@ -167,7 +167,7 @@ int8_t sdi_12_init(struct device *uart_dev, struct device *gpio_dev,
  *
  * @return 
  */
-int8_t sdi_12_ack_active(struct device *uart_dev, char address);
+int8_t sdi_12_ack_active(const struct device *uart_dev, char address);
 
 /**
  * @brief Get SDI-12 devices information
@@ -178,7 +178,7 @@ int8_t sdi_12_ack_active(struct device *uart_dev, char address);
  *
  * @return 
  */
-int8_t sdi_12_get_info(struct device *uart_dev, char address,
+int8_t sdi_12_get_info(const struct device *uart_dev, char address,
 				struct sdi_12_sensr_id *info);
 
 /**
@@ -190,7 +190,7 @@ int8_t sdi_12_get_info(struct device *uart_dev, char address,
  *
  * @return SDI_12_STATUS_OK if succeeded or a negative SDI_12_STATUS_e otheriwse 
  */
-int8_t sdi_12_get_address(struct device *uart_dev, char* address);
+int8_t sdi_12_get_address(const struct device *uart_dev, char* address);
 
 /**
  * @brief Set the address of a device on the SDI-12 line.
@@ -201,7 +201,7 @@ int8_t sdi_12_get_address(struct device *uart_dev, char* address);
  *
  * @return SDI_12_STATUS_OK if succeeded or a negative SDI_12_STATUS_e otheriwse 
  */
-int8_t sdi_12_change_address(struct device *uart_dev, char address_old,
+int8_t sdi_12_change_address(const struct device *uart_dev, char address_old,
 				char address_new);
 
 /**
@@ -217,7 +217,7 @@ int8_t sdi_12_change_address(struct device *uart_dev, char address_old,
  * @return number of measurements placed in the array or a negative
  * SDI_12_STATUS_e on failure 
  */
-int8_t sdi_12_get_measurements(struct device *uart_dev, char address,
+int8_t sdi_12_get_measurements(const struct device *uart_dev, char address,
 				double* data_out, unsigned int len, bool crc);
 
 /**
@@ -233,7 +233,7 @@ int8_t sdi_12_get_measurements(struct device *uart_dev, char address,
  *
  * @return SDI_12_STATUS_OK if succeeded or a negative SDI_12_STATUS_e otheriwse 
  */
-int8_t sdi_12_cmd_n_resp(struct device *uart_dev, SDI_12_CMD_TYPE_e cmd_type,
+int8_t sdi_12_cmd_n_resp(const struct device *uart_dev, SDI_12_CMD_TYPE_e cmd_type,
 			char address, char param_cmd, void* param_resp);
 
 int8_t sdi_12_parse_response(char *resp, char resp_len,
