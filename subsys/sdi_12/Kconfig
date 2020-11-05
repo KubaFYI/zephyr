@@ -1,0 +1,42 @@
+#
+# Copyright (c) 2019 R3 IoT Ltd.
+#
+# License: Apache-2.0
+#
+# Configuration file for SDI-12 drivers.
+
+menuconfig SDI_12
+	bool "SDI-12 support"
+	depends on SERIAL
+	help
+	  Include SDI-12 drivers in the system config.
+
+if SDI_12
+
+module = SDI_12
+module-str = SDI-12
+source "subsys/logging/Kconfig.template.log_config"
+
+config SDI_12_INIT_PRIORITY
+	int "SDI-12 initialization priority"
+	default 90
+	help
+	  System initialization priority for SDI-12 drivers.
+
+config SDI_12_TX_ENABLE_INV
+	bool "SDI-12 TX enable pin invert"
+	help
+	  Enabling this inverts the output of the GPIO pin signalling whether
+	  the SDI-12 master is transmitting or receiving.
+
+config SDI_12_CMD_EXT_CHAR
+	int "SDI-12 Extended Command Character (ASCII value)"
+	default 88
+	help
+	  The SDI-12 standard specified extended command instruction character
+	  to be an 'X'. However, some SDI-12 devices, like the Xylem EXO sondes,
+	  use a different char acter for that purpose. This option allows to
+	  specify the ASCII value of such an alternative instruction character.
+
+endif # SDI_12
+

@@ -1,0 +1,7 @@
+tests:
+  # section.subsection
+  testing.ztest:
+    build_only: false
+    platform_whitelist: native_posix 
+    # platform_whitelist: adafruit_feather_m0_basic_proto
+    tags: testing

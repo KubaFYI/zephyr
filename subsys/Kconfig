@@ -55,4 +55,6 @@ source "subsys/timing/Kconfig"
 
 source "subsys/tracing/Kconfig"
 
+source "subsys/sdi_12/Kconfig"
+
 endmenu
