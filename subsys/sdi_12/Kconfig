@@ -23,5 +23,11 @@ config SDI_12_INIT_PRIORITY
 	help
 	  System initialization priority for SDI-12 drivers.
 
+config SDI_12_TX_ENABLE_INV
+	bool "SDI-12 TX enable pin invert"
+	help
+	  Enabling this inverts the output of the GPIO pin signalling whether
+	  the SDI-12 master is transmitting or receiving.
+
 endif # SDI_12
 
