@@ -153,6 +153,42 @@ int lorawan_start(void);
 int lorawan_send(uint8_t port, uint8_t *data, uint8_t len, uint8_t flags);
 
 /**
+ * @brief Check if there is uncollected received data from the LoRaWAN network
+ *
+ * Check if there is uncolllected received data from the LoRaWAN network
+ *
+ * @return 0 or positive number indicating the number of received messages
+ * waiting to be read from the buffer, or negative errno code if failure
+ */
+int lorawan_receive_available(void);
+
+/**
+ * @brief Read uncollected received data from the LoRaWAN network
+ *
+ * Read uncollected received data from the LoRaWAN network. This function will
+ * return each received message only once - each read opration removes the
+ * oldest downlink measage from the buffer of received unread messages.
+ *
+ * @param port       Port at which the message arrived
+ * @param data       Data buffer where received data shall be placed
+ * @param len        Size of the \p data buffer available. Messages with
+ *                   payloads larger than the buffer will be truncated
+ *
+ * @return 0 if successful, negative errno code if failure
+ */
+int lorawan_receive_read(uint8_t *port, uint8_t *data, uint8_t len);
+
+/**
+ * @brief Check if any uncollected received incoming data was discarded
+ *
+ * Check if any uncollected received incoming data was discarded due to
+ * insufficient free space in the RX buffer.
+ *
+ * @return 0 or positive number indicating the number of discarded messages
+ */
+int lorawan_receive_discarded(void);
+
+/**
  * @brief Set the current device class
  *
  * Change the current device class. This function may be called before

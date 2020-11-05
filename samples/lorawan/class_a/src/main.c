@@ -25,6 +25,7 @@ BUILD_ASSERT(DT_NODE_HAS_STATUS(DEFAULT_RADIO_NODE, okay),
 					  0x09, 0xCF, 0x4F, 0x3C }
 
 #define DELAY K_MSEC(10000)
+#define DL_MSG_LEN 256
 
 #define LOG_LEVEL CONFIG_LOG_DEFAULT_LEVEL
 #include <logging/log.h>
@@ -40,6 +41,10 @@ void main(void)
 	uint8_t join_eui[] = LORAWAN_JOIN_EUI;
 	uint8_t app_key[] = LORAWAN_APP_KEY;
 	int ret;
+	int dl_msgs_no;
+	int i;
+	uint8_t port;
+	uint8_t dl_msg[DL_MSG_LEN] = {'\0'};
 
 	lora_dev = device_get_binding(DEFAULT_RADIO);
 	if (!lora_dev) {
@@ -59,15 +64,17 @@ void main(void)
 	join_cfg.otaa.app_key = app_key;
 	join_cfg.otaa.nwk_key = app_key;
 
-	LOG_INF("Joining network over OTAA");
-	ret = lorawan_join(&join_cfg);
-	if (ret < 0) {
-		LOG_ERR("lorawan_join_network failed: %d", ret);
-		return;
-	}
+	do {
+		LOG_INF("Joining network over OTAA");
+		ret = lorawan_join(&join_cfg);
+		if (ret < 0) {
+			LOG_ERR("lorawan_join_network failed: %d", ret);
+			k_sleep(DELAY);
+		}
+	} while (ret < 0);
 
-	LOG_INF("Sending data...");
 	while (1) {
+		LOG_INF("Sending data...");
 		ret = lorawan_send(2, data, sizeof(data),
 				   LORAWAN_MSG_CONFIRMED);
 
@@ -84,11 +91,28 @@ void main(void)
 		}
 
 		if (ret < 0) {
-			LOG_ERR("lorawan_send failed: %d", ret);
-			return;
+			LOG_ERR("lorawan_send failed: %d. Continuing...", ret);
+			k_sleep(DELAY);
+			continue;
 		}
 
 		LOG_INF("Data sent!");
+
+		dl_msgs_no = lorawan_receive_available();
+		if (dl_msgs_no >= 0) {
+			LOG_INF("%d downlink msgs available", dl_msgs_no);
+			for (i = 0; i < dl_msgs_no; i++) {
+				memset(dl_msg, '\0', DL_MSG_LEN);
+				ret = lorawan_receive_read(&port, dl_msg,
+					DL_MSG_LEN-1);
+				if (ret >= 0) {
+					LOG_INF("Msg at port %d, length %d: %s",
+						port,
+						ret,
+						log_strdup(dl_msg));
+				}
+			}
+		}
 		k_sleep(DELAY);
 	}
 }
