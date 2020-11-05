@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2019 R3 IoT Ltd.
+ *
+ * License: Apache-2.0
+ */
+
 #ifndef SDI_12_UART_H__
 #define SDI_12_UART_H__
 

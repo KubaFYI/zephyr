@@ -30,7 +30,8 @@
  * sensor version: 1.0
  * other information: OtherInfo
  *
-*/
+ */
+
 #include <zephyr.h>
 #include <math.h>
 #include <ctype.h>

@@ -2,7 +2,7 @@
  * Copyright (c) 2019 R3 IoT Ltd.
  *
  * License: Apache-2.0
-*/
+ */
 
 #include <sdi_12/sdi_12.h>
 #include <sdi_12/sdi_12_uart.h>
@@ -38,104 +38,107 @@ bool keep_retrying;
 bool sensor_wakeup_deadline;
 
 static char sdi_12_cmd_char[SDI_12_CMD_TYPE_MAX] = {
-		SDI_12_NULL_PARAM,		// SDI_12_CMD_ACK_ACTIVE
-		'I',				// SDI_12_CMD_SEND_ID
-		'A',				// SDI_12_CMD_CHNG_ADDR
-		SDI_12_NULL_PARAM,		// SDI_12_CMD_ADDR_QUERY
-		'M',				// SDI_12_CMD_START_MEAS
-		'M',				// SDI_12_CMD_START_MEAS_CRC
-		'D',				// SDI_12_CMD_SEND_DATA
-		'M',				// SDI_12_CMD_ADDIT_MEAS
-		'M',				// SDI_12_CMD_ADDIT_MEAS_CRC
-		'V',				// SDI_12_CMD_START_VERIF
-		'C',				// SDI_12_CMD_START_CONCUR_MEAS
-		'C',				// SDI_12_CMD_START_CONCUR_MEAS_CRC
-		'C',				// SDI_12_CMD_ADDIT_CONCUR_MEAS
-		'C',				// SDI_12_CMD_ADDIT_CONCUR_MEAS_CRC
-		'R',				// SDI_12_CMD_CONT_MEAS
-		'R',				// SDI_12_CMD_CONT_MEAS_CRC
-		CONFIG_SDI_12_CMD_EXT_CHAR	// SDI_12_CMD_EXT
+	SDI_12_NULL_PARAM,		/* SDI_12_CMD_ACK_ACTIVE */
+	'I',				/* SDI_12_CMD_SEND_ID */
+	'A',				/* SDI_12_CMD_CHNG_ADDR */
+	SDI_12_NULL_PARAM,		/* SDI_12_CMD_ADDR_QUERY */
+	'M',				/* SDI_12_CMD_START_MEAS */
+	'M',				/* SDI_12_CMD_START_MEAS_CRC */
+	'D',				/* SDI_12_CMD_SEND_DATA */
+	'M',				/* SDI_12_CMD_ADDIT_MEAS */
+	'M',				/* SDI_12_CMD_ADDIT_MEAS_CRC */
+	'V',				/* SDI_12_CMD_START_VERIF */
+	'C',				/* SDI_12_CMD_START_CONCUR_MEAS */
+	'C',				/* SDI_12_CMD_START_CONCUR_MEAS_CRC */
+	'C',				/* SDI_12_CMD_ADDIT_CONCUR_MEAS */
+	'C',				/* SDI_12_CMD_ADDIT_CONCUR_MEAS_CRC */
+	'R',				/* SDI_12_CMD_CONT_MEAS */
+	'R',				/* SDI_12_CMD_CONT_MEAS_CRC */
+	CONFIG_SDI_12_CMD_EXT_CHAR	/* SDI_12_CMD_EXT */
 };		
 
 static bool sdi_12_cmd_crc[SDI_12_CMD_TYPE_MAX] = \
-		{false,		// SDI_12_CMD_ACK_ACTIVE
-		false,		// SDI_12_CMD_SEND_ID
-		false,		// SDI_12_CMD_CHNG_ADDR
-		false,		// SDI_12_CMD_ADDR_QUERY
-		false,		// SDI_12_CMD_START_MEAS
-		true,		// SDI_12_CMD_START_MEAS_CRC
-		false,		// SDI_12_CMD_SEND_DATA
-		false,		// SDI_12_CMD_ADDIT_MEAS
-		true,		// SDI_12_CMD_ADDIT_MEAS_CRC
-		false,		// SDI_12_CMD_START_VERIF
-		false,		// SDI_12_CMD_START_CONCUR_MEAS
-		true,		// SDI_12_CMD_START_CONCUR_MEAS_CRC
-		false,		// SDI_12_CMD_ADDIT_CONCUR_MEAS
-		true,		// SDI_12_CMD_ADDIT_CONCUR_MEAS_CRC
-		false,		// SDI_12_CMD_CONT_MEAS
-		true,		// SDI_12_CMD_CONT_MEAS_CRC
-		false		// SDI_12_CMD_EXT
+	{false,		/* SDI_12_CMD_ACK_ACTIVE */
+	false,		/* SDI_12_CMD_SEND_ID */
+	false,		/* SDI_12_CMD_CHNG_ADDR */
+	false,		/* SDI_12_CMD_ADDR_QUERY */
+	false,		/* SDI_12_CMD_START_MEAS */
+	true,		/* SDI_12_CMD_START_MEAS_CRC */
+	false,		/* SDI_12_CMD_SEND_DATA */
+	false,		/* SDI_12_CMD_ADDIT_MEAS */
+	true,		/* SDI_12_CMD_ADDIT_MEAS_CRC */
+	false,		/* SDI_12_CMD_START_VERIF */
+	false,		/* SDI_12_CMD_START_CONCUR_MEAS */
+	true,		/* SDI_12_CMD_START_CONCUR_MEAS_CRC */
+	false,		/* SDI_12_CMD_ADDIT_CONCUR_MEAS */
+	true,		/* SDI_12_CMD_ADDIT_CONCUR_MEAS_CRC */
+	false,		/* SDI_12_CMD_CONT_MEAS */
+	true,		/* SDI_12_CMD_CONT_MEAS_CRC */
+	false		/* SDI_12_CMD_EXT */
 };		
 static bool sdi_12_cmd_param[SDI_12_CMD_TYPE_MAX] = \
-		{false,		// SDI_12_CMD_ACK_ACTIVE
-		false,		// SDI_12_CMD_SEND_ID
-		true,		// SDI_12_CMD_CHNG_ADDR
-		false,		// SDI_12_CMD_ADDR_QUERY
-		false,		// SDI_12_CMD_START_MEAS
-		false,		// SDI_12_CMD_START_MEAS_CRC
-		true,		// SDI_12_CMD_SEND_DATA
-		true,		// SDI_12_CMD_ADDIT_MEAS
-		true,		// SDI_12_CMD_ADDIT_MEAS_CRC
-		false,		// SDI_12_CMD_START_VERIF
-		false,		// SDI_12_CMD_START_CONCUR_MEAS
-		false,		// SDI_12_CMD_START_CONCUR_MEAS_CRC
-		true,		// SDI_12_CMD_ADDIT_CONCUR_MEAS
-		true,		// SDI_12_CMD_ADDIT_CONCUR_MEAS_CRC
-		true,		// SDI_12_CMD_CONT_MEAS
-		true,		// SDI_12_CMD_CONT_MEAS_CRC
-		false		// SDI_12_CMD_EXT
+	{false,		/* SDI_12_CMD_ACK_ACTIVE */
+	false,		/* SDI_12_CMD_SEND_ID */
+	true,		/* SDI_12_CMD_CHNG_ADDR */
+	false,		/* SDI_12_CMD_ADDR_QUERY */
+	false,		/* SDI_12_CMD_START_MEAS */
+	false,		/* SDI_12_CMD_START_MEAS_CRC */
+	true,		/* SDI_12_CMD_SEND_DATA */
+	true,		/* SDI_12_CMD_ADDIT_MEAS */
+	true,		/* SDI_12_CMD_ADDIT_MEAS_CRC */
+	false,		/* SDI_12_CMD_START_VERIF */
+	false,		/* SDI_12_CMD_START_CONCUR_MEAS */
+	false,		/* SDI_12_CMD_START_CONCUR_MEAS_CRC */
+	true,		/* SDI_12_CMD_ADDIT_CONCUR_MEAS */
+	true,		/* SDI_12_CMD_ADDIT_CONCUR_MEAS_CRC */
+	true,		/* SDI_12_CMD_CONT_MEAS */
+	true,		/* SDI_12_CMD_CONT_MEAS_CRC */
+	false		/* SDI_12_CMD_EXT */
 };	
 
 static SDI_12_PAYLOAD_TYPE_e sdi_12_resp_param[SDI_12_CMD_TYPE_MAX] = \
-		{SDI_12_NO_PAYLD,	// SDI_12_CMD_ACK_ACTIVE and SDI_12_CMD_SERVICE_REQ
-		SDI_12_ID_PAYLD,	// SDI_12_CMD_SEND_ID
-		SDI_12_NO_PAYLD,	// SDI_12_CMD_CHNG_ADDR
-		SDI_12_NO_PAYLD,	// SDI_12_CMD_ADDR_QUERY
-		SDI_12_MEAS_PAYLD,	// SDI_12_CMD_START_MEAS
-		SDI_12_MEAS_PAYLD,	// SDI_12_CMD_START_MEAS_CRC
-		SDI_12_VAL_PAYLD,	// SDI_12_CMD_SEND_DATA
-		SDI_12_MEAS_PAYLD,	// SDI_12_CMD_ADDIT_MEAS
-		SDI_12_MEAS_PAYLD,	// SDI_12_CMD_ADDIT_MEAS_CRC
-		SDI_12_FREEFORM_PAYLD,	// SDI_12_CMD_START_VERIF
-		SDI_12_MEAS_PAYLD,	// SDI_12_CMD_START_CONCUR_MEAS
-		SDI_12_MEAS_PAYLD,	// SDI_12_CMD_START_CONCUR_MEAS_CRC
-		SDI_12_MEAS_PAYLD,	// SDI_12_CMD_ADDIT_CONCUR_MEAS
-		SDI_12_MEAS_PAYLD,	// SDI_12_CMD_ADDIT_CONCUR_MEAS_CRC
-		SDI_12_VAL_PAYLD,	// SDI_12_CMD_CONT_MEAS
-		SDI_12_VAL_PAYLD,	// SDI_12_CMD_CONT_MEAS_CRC
-		SDI_12_STR_PAYLD	// SDI_12_CMD_EXT
+	{SDI_12_NO_PAYLD,	/* SDI_12_CMD_ACK_ACTIVE
+				 * and SDI_12_CMD_SERVICE_REQ
+				 */
+	SDI_12_ID_PAYLD,	/* SDI_12_CMD_SEND_ID */
+	SDI_12_NO_PAYLD,	/* SDI_12_CMD_CHNG_ADDR */
+	SDI_12_NO_PAYLD,	/* SDI_12_CMD_ADDR_QUERY */
+	SDI_12_MEAS_PAYLD,	/* SDI_12_CMD_START_MEAS */
+	SDI_12_MEAS_PAYLD,	/* SDI_12_CMD_START_MEAS_CRC */
+	SDI_12_VAL_PAYLD,	/* SDI_12_CMD_SEND_DATA */
+	SDI_12_MEAS_PAYLD,	/* SDI_12_CMD_ADDIT_MEAS */
+	SDI_12_MEAS_PAYLD,	/* SDI_12_CMD_ADDIT_MEAS_CRC */
+	SDI_12_FREEFORM_PAYLD,	/* SDI_12_CMD_START_VERIF */
+	SDI_12_MEAS_PAYLD,	/* SDI_12_CMD_START_CONCUR_MEAS */
+	SDI_12_MEAS_PAYLD,	/* SDI_12_CMD_START_CONCUR_MEAS_CRC */
+	SDI_12_MEAS_PAYLD,	/* SDI_12_CMD_ADDIT_CONCUR_MEAS */
+	SDI_12_MEAS_PAYLD,	/* SDI_12_CMD_ADDIT_CONCUR_MEAS_CRC */
+	SDI_12_VAL_PAYLD,	/* SDI_12_CMD_CONT_MEAS */
+	SDI_12_VAL_PAYLD,	/* SDI_12_CMD_CONT_MEAS_CRC */
+	SDI_12_STR_PAYLD	/* SDI_12_CMD_EXT */
 };
 
 
-int8_t sdi_12_cmd_n_resp(const struct device *uart_dev, SDI_12_CMD_TYPE_e cmd_type,
-            char address, void *param_cmd, void *param_resp);
+int8_t sdi_12_cmd_n_resp(const struct device *uart_dev,
+	SDI_12_CMD_TYPE_e cmd_type, char address, void *param_cmd,
+	void *param_resp);
 
-static int8_t sdi_12_tx_rx_inner_retries(const struct device *uart_dev, char *buffer,
-				       int buffer_len);
+static int8_t sdi_12_tx_rx_inner_retries(const struct device *uart_dev,
+	char *buffer, int buffer_len);
 
 int8_t sdi_12_parse_response(char *resp, char resp_len,
-			SDI_12_CMD_TYPE_e cmd_type, char *address, void* data);
+	SDI_12_CMD_TYPE_e cmd_type, char *address, void *data);
 
 int8_t sdi_12_prep_command(char *cmd, char address,
-				SDI_12_CMD_TYPE_e cmd_type, void *param);
+	SDI_12_CMD_TYPE_e cmd_type, void *param);
 
 void sdi_12_calc_crc_ascii(char *cmd, uint8_t cmd_len, char *crc);
 
-void break_needed_timer_clbk(struct k_timer* timer_id);
+void break_needed_timer_clbk(struct k_timer *timer_id);
 
-void retry_timer_clbk(struct k_timer* timer_id);
+void retry_timer_clbk(struct k_timer *timer_id);
 
-void sensor_wakeup_deadline_timer_clbk(struct k_timer* timer_id);
+void sensor_wakeup_deadline_timer_clbk(struct k_timer *timer_id);
 
 K_TIMER_DEFINE(break_needed_timer,
 	       break_needed_timer_clbk, NULL);
@@ -144,17 +147,17 @@ K_TIMER_DEFINE(retry_timer,
 K_TIMER_DEFINE(sensor_wakeup_deadline_timer,
 	       sensor_wakeup_deadline_timer_clbk, NULL);
 
-void break_needed_timer_clbk(struct k_timer* timer_id)
+void break_needed_timer_clbk(struct k_timer *timer_id)
 {
 	break_needed = true;
 }
 
-void retry_timer_clbk(struct k_timer* timer_id)
+void retry_timer_clbk(struct k_timer *timer_id)
 {
 	keep_retrying = false;
 }
 
-void sensor_wakeup_deadline_timer_clbk(struct k_timer* timer_id)
+void sensor_wakeup_deadline_timer_clbk(struct k_timer *timer_id)
 {
 	sensor_wakeup_deadline = true;
 }
@@ -214,7 +217,7 @@ int8_t sdi_12_get_info(const struct device *uart_dev, char address,
 	return SDI_12_STATUS_OK;
 }
 
-int8_t sdi_12_get_address(const struct device *uart_dev, char* address)
+int8_t sdi_12_get_address(const struct device *uart_dev, char *address)
 {
 	int ret;
 	char param = SDI_12_NULL_PARAM;
@@ -249,7 +252,7 @@ int8_t sdi_12_change_address(const struct device *uart_dev, char address_old,
 }
 
 int8_t sdi_12_get_measurements(const struct device *uart_dev, char address,
-				double* data_out, unsigned int len, bool crc)
+				double *data_out, unsigned int len, bool crc)
 {	
 	int ret;
 	int idx;
@@ -353,13 +356,13 @@ int8_t sdi_12_get_measurements(const struct device *uart_dev, char address,
 }
 
 int8_t sdi_12_ext_command(const struct device *uart_dev, char address,
-				char* ext_cmd, char* ret_str)
+				char *ext_cmd, char *ret_str)
 {
 	int ret;
 
 	ret = sdi_12_cmd_n_resp(uart_dev, SDI_12_CMD_EXT, address,
 				ext_cmd, ret_str);
-	if ( ret != SDI_12_STATUS_OK ) {
+	if (ret != SDI_12_STATUS_OK) {
 		LOG_ERR("Requesting measurement failed");
 		return ret;
 	}
@@ -367,8 +370,9 @@ int8_t sdi_12_ext_command(const struct device *uart_dev, char address,
 	return strlen(ret_str);
 }
 
-int8_t sdi_12_cmd_n_resp(const struct device *uart_dev, SDI_12_CMD_TYPE_e cmd_type,
-            char address, void *param_cmd, void* param_resp)
+int8_t sdi_12_cmd_n_resp(const struct device *uart_dev,
+	SDI_12_CMD_TYPE_e cmd_type, char address, void *param_cmd,
+	void *param_resp)
 {
 	int ret;
 	char resp_address;
@@ -388,7 +392,8 @@ int8_t sdi_12_cmd_n_resp(const struct device *uart_dev, SDI_12_CMD_TYPE_e cmd_ty
 
 		if ( break_needed || address != last_address) {
 			ret = gpio_pin_set_raw(sdi_12_gpio_dev,
-						sdi_12_tx_enable_pin, TX_ENABLE_ON);
+						sdi_12_tx_enable_pin,
+						TX_ENABLE_ON);
 			if (ret != 0) {
 				LOG_ERR("Couldn't enable HW tx buffer");
 				return ret;
@@ -420,7 +425,7 @@ int8_t sdi_12_cmd_n_resp(const struct device *uart_dev, SDI_12_CMD_TYPE_e cmd_ty
 
 		if (cmd_type == SDI_12_CMD_CHNG_ADDR ||
 			cmd_type == SDI_12_CMD_ADDR_QUERY) {
-			*(char*)(param_resp) = resp_address;
+			*(char *)(param_resp) = resp_address;
 		}
 
 		if ( ret != SDI_12_STATUS_ADDR_INVALID &&
@@ -428,7 +433,7 @@ int8_t sdi_12_cmd_n_resp(const struct device *uart_dev, SDI_12_CMD_TYPE_e cmd_ty
 			((cmd_type != SDI_12_CMD_CHNG_ADDR &&
 				resp_address != address) ||
 			(cmd_type == SDI_12_CMD_CHNG_ADDR &&
-				resp_address != *(char*)param_cmd))) {
+				resp_address != *(char *)param_cmd))) {
 			LOG_DBG("Cmd-resp address mismatch");
 			ret = SDI_12_STATUS_ADDR_MISMATCH;
 		}
@@ -449,8 +454,8 @@ int8_t sdi_12_cmd_n_resp(const struct device *uart_dev, SDI_12_CMD_TYPE_e cmd_ty
 
 }
 
-static int8_t sdi_12_tx_rx_inner_retries(const struct device *uart_dev, char *buffer,
-				       int buffer_len)
+static int8_t sdi_12_tx_rx_inner_retries(const struct device *uart_dev,
+	char *buffer, int buffer_len)
 {
 	int ret = SDI_12_STATUS_ERROR;
 	int retry_count = 0;
@@ -524,7 +529,7 @@ static int8_t sdi_12_tx_rx_inner_retries(const struct device *uart_dev, char *bu
 
 int8_t sdi_12_parse_response(char *resp, char resp_len, 
 				SDI_12_CMD_TYPE_e cmd_type,
-				char *address, void* data)
+				char *address, void *data)
 {
 	int idx;
 	int resp_idx = 0;
@@ -623,7 +628,7 @@ int8_t sdi_12_parse_response(char *resp, char resp_len,
 			LOG_WRN("Unexpected payload");
 			return SDI_12_STATUS_ERROR;
 		}
-		*( (char*)data ) = resp[resp_idx];
+		*((char *)data) = resp[resp_idx];
 		break;
 	case SDI_12_MEAS_PAYLD:
 		if ( (pld_end_idx-resp_idx) < 4 ||
@@ -704,7 +709,7 @@ int8_t sdi_12_parse_response(char *resp, char resp_len,
 		/* Just copy the whole string in response and null-terminate */
 		memcpy(data, resp+resp_idx,
 			sizeof(resp[resp_idx]) * (pld_end_idx-resp_idx));
-		((char*)data)[(pld_end_idx-resp_idx)] = '\0';
+		((char *)data)[(pld_end_idx-resp_idx)] = '\0';
 		break;
 	case SDI_12_FREEFORM_PAYLD:
 		/* This payload type is used for when no particular response
@@ -736,7 +741,7 @@ int8_t sdi_12_prep_command(char *cmd, char address,
 	int cmd_idx = 0;
 	char char_param;
 
-	char_param = *(char*)param;
+	char_param = *(char *)param;
 
 	if (cmd_type == SDI_12_CMD_ADDR_QUERY) {
 		cmd[cmd_idx++] = '?';
@@ -778,7 +783,7 @@ int8_t sdi_12_prep_command(char *cmd, char address,
 	return SDI_12_STATUS_OK;
 }
 
-void sdi_12_calc_crc_ascii(char *cmd, uint8_t cmd_len, char* crc_str)
+void sdi_12_calc_crc_ascii(char *cmd, uint8_t cmd_len, char *crc_str)
 {
 	uint16_t crc_num = 0;
 	int idx, jdx;

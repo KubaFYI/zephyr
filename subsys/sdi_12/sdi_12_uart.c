@@ -2,7 +2,7 @@
  * Copyright (c) 2019 R3 IoT Ltd.
  *
  * License: Apache-2.0
-*/
+ */
 
 
 #include <zephyr/types.h>
@@ -21,7 +21,7 @@ struct k_timer tx_ongoing;
 
 struct k_sem tx_finished_tmr_sem;
 
-void tx_ongoing_timer_clbk(struct k_timer* timer_id);
+void tx_ongoing_timer_clbk(struct k_timer *timer_id);
 
 K_TIMER_DEFINE(tx_ongoing_timer,
 	       tx_ongoing_timer_clbk, NULL);
@@ -40,7 +40,7 @@ struct uart_irq_data {
 
 static struct uart_irq_data irq_data;
 
-void tx_ongoing_timer_clbk(struct k_timer* timer_id)
+void tx_ongoing_timer_clbk(struct k_timer *timer_id)
 {
 	k_sem_give(&tx_finished_tmr_sem);
 }
@@ -49,11 +49,12 @@ int8_t sdi_12_uart_init(const struct device *uart_dev);
 
 int8_t sdi_12_uart_send_break(const struct device *uart_dev);
 
-int8_t sdi_12_uart_tx(const struct device *uart_dev, uint8_t *buffer, unsigned int len);
+int8_t sdi_12_uart_tx(const struct device *uart_dev, uint8_t *buffer,
+	unsigned int len);
 
 int8_t sdi_12_uart_rx(const struct device *uart_dev, uint8_t *buffer,
-			unsigned int len, unsigned int timeout_start,
-			unsigned int timeout_end);
+	unsigned int len, unsigned int timeout_start,
+	unsigned int timeout_end);
 
 static void sdi_12_uart_isr(const struct device *uart_dev, void *user_data)
 {
@@ -99,13 +100,11 @@ static void sdi_12_uart_isr(const struct device *uart_dev, void *user_data)
 					     data->tx_buffer,
 					     data->tx_remaining);
 			for (i=0; i<ret; i++) {
-				// LOG_DBG("tx:0x%x", data->tx_buffer[i]);
 			}
 			if (ret < data->tx_remaining) {
 				data->tx_buffer += ret;
 				data->tx_remaining -= ret;
 			} else {
-				// LOG_DBG("TX done");
 				data->tx_remaining = 0;
 				uart_irq_tx_disable(uart_dev);
 				k_sem_give(&data->tx_complete_sem);

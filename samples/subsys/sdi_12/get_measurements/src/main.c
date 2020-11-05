@@ -4,7 +4,8 @@
  * License: Apache-2.0
  *
  * An example app using the SDI-12 subsystem for sensor interaction.
-*/
+ */
+
 #include <zephyr.h>
 #include <drivers/gpio.h>
 #include <drivers/pinmux.h>

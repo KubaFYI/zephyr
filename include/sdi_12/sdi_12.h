@@ -1,10 +1,4 @@
-/**
- * @file sdi_12/sdi_12.h
- *
- * @brief Public APIs for the SDI-12 subsystem. 
- */
-
- /*
+/*
  * Copyright (c) 2019 R3 IoT Ltd.
  *
  * License: Apache-2.0
@@ -95,8 +89,9 @@ typedef enum {
 #endif
 
 
-int8_t sdi_12_rx(const struct device *uart_dev, uint8_t *buffer, unsigned int len,
-				char *terminator, unsigned int timeout);
+int8_t sdi_12_rx(const struct device *uart_dev, uint8_t *buffer,
+	unsigned int len, char *terminator, unsigned int timeout);
+
 typedef enum  {
 	SDI_12_CMD_ACK_ACTIVE = 0,
 	SDI_12_CMD_SERVICE_REQ = 0,
@@ -249,15 +244,16 @@ int8_t sdi_12_ext_command(const struct device *uart_dev, char address,
  *
  * @return SDI_12_STATUS_OK if succeeded or a negative SDI_12_STATUS_e otheriwse 
  */
-int8_t sdi_12_cmd_n_resp(const struct device *uart_dev, SDI_12_CMD_TYPE_e cmd_type,
-			char address, void *param_cmd, void* param_resp);
+int8_t sdi_12_cmd_n_resp(const struct device *uart_dev,
+	SDI_12_CMD_TYPE_e cmd_type, char address, void *param_cmd,
+	void *param_resp);
 
 int8_t sdi_12_parse_response(char *resp, char resp_len,
-			SDI_12_CMD_TYPE_e cmd_type, char *address, void* data);
+			SDI_12_CMD_TYPE_e cmd_type, char *address, void *data);
 
 int8_t sdi_12_prep_command(char *cmd, char address,
 				SDI_12_CMD_TYPE_e cmd_type, void *param);
 
-void sdi_12_calc_crc_ascii(char *cmd, uint8_t cmd_len, char* crc);
+void sdi_12_calc_crc_ascii(char *cmd, uint8_t cmd_len, char *crc);
 
 #endif
