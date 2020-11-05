@@ -29,5 +29,14 @@ config SDI_12_TX_ENABLE_INV
 	  Enabling this inverts the output of the GPIO pin signalling whether
 	  the SDI-12 master is transmitting or receiving.
 
+config SDI_12_CMD_EXT_CHAR
+	int "SDI-12 Extended Command Character (ASCII value)"
+	default 88
+	help
+	  The SDI-12 standard specified extended command instruction character
+	  to be an 'X'. However, some SDI-12 devices, like the Xylem EXO sondes,
+	  use a different char acter for that purpose. This option allows to
+	  specify the ASCII value of such an alternative instruction character.
+
 endif # SDI_12
 
